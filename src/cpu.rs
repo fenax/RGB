@@ -70,49 +70,78 @@ fn u16tou8(v:u16) -> (u8,u8){
 
 fn instruct(&mut ram : Ram, &mut reg : Registers)
 ->Option<u8>{
-    fn add(a:u8,b:u8)->u8{
+    fn add(b:u8)->Option<u8>{
         reg.Fh = ((a&0xf + b&0xf)>0xf);
         reg.Fs = false;
-        let (r,c) = a.overflowing_add(b);
+        let (r,c) = reg.A.overflowing_add(b);
         reg.Fz = r==0;
         reg.Fc = c;
-        r
+        reg.A = r;
+        None
     }
-    fn inc(a:u8)->u8{
-        let r = a+1;
-        reg.Fh = (r&0xf) == 0;
-        reg.Fs = false;
-        reg.Fz = r==0;
-        r
-    }
-    fn dec(a:u8)->u8{
-        let r = a-1;
-        reg.Fh = (r&=0xf) == 0xf;
+    fn sub(b:u8)->Option<u8>{
+        reg.Fh = a&0xf < b&0xf;
         reg.Fs = true;
+        let (r,c) = reg.A.overflowing_sub(b);
         reg.Fz = r==0;
-        r
+        reg.Fc = c;
+        reg.A = r;
+        None
+    }
+    fn adc(b:u8)->Option<u8>{
+        if reg.Fc {
+            reg.Fh = (a&0xf + b&0xf + 1)>0xf;
+            reg.Fs = false;
+            let (r1,c1) = reg.A.overflowing_add(b);
+            let (r,c2) =  r1.overflowing_add(1);
+            reg.Fz = r==0;
+            reg.Fc = c1 || c2
+            reg.A = r;
+            None
+        }else add(b)
+    }
+    fn sbc(b:u8)->Option<u8>{
+        if reg.Fc {
+            reg.Fh = a&0xf <= b&0xf;
+            reg.Fs = true;
+            let (r1,c1) = reg.A.overflowing_sub(b);
+            let (r, c2) = r1.overflowing_sub(1);
+            reg.Fz = r==0;
+            reg.Fc = c1 || c2;
+            reg.A = r;
+            None
+        }else sub(b)
+    }
+    fn inc(a:&mut u8)->Option<u8>{
+        a+=1;
+        reg.Fh = (a&0xf) == 0;
+        reg.Fs = false;
+        reg.Fz = a==0;
+        None
+    }
+    fn dec(a:&mut u8)->Option<u8>{
+        a-=1;
+        reg.Fh = (a&=0xf) == 0xf;
+        reg.Fs = true;
+        reg.Fz = a==0;
+        None
+    }
+    fn inc16(l:&mut u8,h:&mut u8)->Option<u8>{
+        let r = u8tou16(l,h);
+        r+=1;
+        l,h = u16tou8(r);
+        Some(1)
+    }
+    fn dec16(l:&mut u8,h:&mut u8)->Option<u8>{
+        let r = u8tou16(l,h);
+        r-=1;
+        l,h = u16tou8(r);
+        Some(1)
     }
     let i = readOp(ram,reg);
     match i {
-
-
-
-        //NOP
-        0x00 |
-        //LD A,A 
-        0x7f |
-        //LD L,L
-        0x6d |
-        //LD H,H
-        0x64 |
-        //LD E,E
-        0x5b |
-        //LD D,D
-        0x52 |
-        //LD C,C
-        0x49 |
-        //LD B,B
-        0x40 => {
+        //NOP LD A,A LD L,L LD H,H LD E,E LD D,D LD C,C LD B,B
+        0x00 | 0x7f | 0x6d | 0x64 | 0x5b | 0x52 | 0x49 | 0x40 => {
             None
         },
         //LD B,C
@@ -394,127 +423,192 @@ fn instruct(&mut ram : Ram, &mut reg : Registers)
         },
 
         //LD (a16),SP
-        0x08
+        0x08 => {
+            let l = readOp(ram,reg);
+            let h = readOp(ram,reg);
+            let spl,sph = u16tou8(reg.SP);
+            let p = u8tou16(l,h);
+            ram.write(p,l);
+            ram.write(p+1,h);
+            Some(4)
+        },
         //LD (HL),d8
-        0x36
+        0x36 => {
+            let d = readOp(ram,reg);
+            write8(reg.L,reg.H,d); 
+            Some(2)
+        },
 
         //LD B,(HL)
-        0x46
+        0x46 => {
+            reg.B = read8(reg.L,reg.H);
+            Some(1)
+        },
         //LD C,(HL)
-        0x4e
+        0x4e => {
+            reg.C = read8(reg.L,reg.H);
+            Some(1)
+        },
         //LD D,(HL)
-        0x56
+        0x56 => {
+            reg.D = read8(reg.L,reg.H);
+            Some(1)
+        },
         //LD E,(HL)
-        0x5e
+        0x5e => {
+            reg.E = read8(reg.L,reg.H);
+            Some(1)
+        },
         //LD H,(HL)
-        0x66
+        0x66 => {
+            reg.E = read8(reg.L,reg.H);
+            Some(1)
+        },
         //LD L,(HL)
-        0x6e
+        0x6e => {
+            reg.L = read8(reg.L,reg.H);
+            Some(1)
+        },
         //LD A,(HL)
-        0x7e
+        0x7e => {
+            reg.A = read8(reg.L,reg.H);
+            Some(1)
+        },
         //LD A,(HL+)
-        0x2a
+        0x2a => {
+            reg.A = read8(reg.L,reg.H);
+            inc16(&mut reg.L,&mut reg.H);
+            Some(1)
+        },
         //LD A,(HL-)
-        0x3a
+        0x3a => {
+            reg.A = read8(reg.L,reg.H);
+            dec16(&mut reg.L,&mut reg.H);
+            Some(1)
+        },
         //LD A,(BC)
-        0x0a
+        0x0a => {
+            reg.A = read8(reg.C,reg.B);
+            Some(1)
+        },
         //LD A,(DE)
-        0x1a
+        0x1a => {
+            reg.A = read8(reg.E,reg.D);
+            Some(1)
+        },
 
 
         //LD (HL),B
-        0x70
+        0x70 => {
+            write8(reg.L,reg.H,reg.B);
+            Some(1)
+        },
         //LD (HL),C
-        0x71
+        0x71 => {
+            write8(reg.L,reg.H,reg.C);
+            Some(1)
+        },
         //LD (HL),D
-        0x72
+        0x72 => {
+            write8(reg.L,reg.H,reg.D);
+            Some(1)
+        },
         //LD (HL),E
-        0x73
+        0x73 => {
+            write8(reg.L,reg.H,reg.E);
+            Some(1)
+        },
         //LD (HL),H
-        0x74
+        0x74 => {
+            write8(reg.L,reg.H,reg.H);
+            Some(1)
+        },
         //LD (HL),L
-        0x75
+        0x75 => {
+            write8(reg.L,reg.H,reg.L);
+            Some(1)
+        },
         //LD (HL),A
-        0x77
+        0x77 => {
+            write8(reg.L,reg.H,reg.A);
+            Some(1)
+        },
         //LD (HL+),A
-        0x22
+        0x22 => {
+            write8(reg.L,reg.H,reg.A);
+            inc16(&mut reg.L, &mut reg.H);
+            Some(1)
+        },
         //LD (HL-),A
-        0x32
+        0x32 => {
+            write8(reg.L,reg.H,reg.A);
+            dec16(&mut reg.L, &mut reg.H);
+            Some(1)
+        },
         //LD (BC),A
-        0x02
+        0x02 => {
+            write8(reg.C,reg.B,reg.A);
+            Some(1);
+        },
         //LD (DE),A
-        0x12
+        0x12 => {
+            write8(reg.E,reg.D,reg.A);
+            Some(1);
+        },
 
 
         //INC A
-        0x3c => {
-            reg.A = reg.A + 1;
-            None
-        },
+        0x3c => inc(&mut reg.A),
         //INC B
-        0x04 => {
-            reg.B = reg.B + 1;
-            None
-        },
+        0x04 => inc(&mut reg.B),
         //INC C
-        0x0c => {
-            reg.C = reg.C + 1;
-            None
-        },
+        0x0c => inc(&mut reg.C),
         //INC D
-        0x14 => {
-            reg.D = reg.D + 1;
-            None
-        },
+        0x14 => inc(&mut reg.D),
         //INC E
-        0x1c => {
-            reg.E = reg.E + 1;
-            None
-        },
+        0x1c => inc(&mut reg.E),
         //INC L
-        0x2c => {
-            reg.L = reg.L + 1;
-            None
-        },
+        0x2c => inc(&mut reg.L),
         //INC H
-        0x24 => {
-            reg.H = reg.H + 1;
-            None
-        },
+        0x24 => inc(&mut reg.H),
 
         //DEC A
-        0x3d => {
-            reg.A = reg.A - 1;
-        }
+        0x3d => dec(&mut reg.A),
         //DEC B
-        0x05
+        0x05 => dec(&mut reg.B),
         //DEC C
-        0x0d
+        0x0d => dec(&mut reg.C),
         //DEC D
-        0x15
+        0x15 => dec(&mut reg.D),
         //DEC E
-        0x1d
+        0x1d => dec(&mut reg.E),
         //DEC L
-        0x2d
+        0x2d => dec(&mut reg.L),
         //DEC H
-        0x25
+        0x25 => dec(&mut reg.H),
 
         //INC BC
-        0x03
+        0x03 => inc16(&mut reg.C,&mut reg.B),
         //INC DE
-        0x13
+        0x13 => inc16(&mut reg.E,&mut reg.D),
         //INC HL
-        0x23
+        0x23 => inc16(&mut reg.L,&mut reg.H),
         //INC SP
-        0x33
+        0x33 => {
+            reg.SP += 1;
+            Some(1)
+        },
         //DEC BC
-        0x0b
+        0x0b => dec16(&mut reg.C,&mut reg.B),
         //DEC DE
-        0x1b
+        0x1b => dec16(&mut reg.E,&mut reg.D),
         //DEC HL
-        0x2b
+        0x2b => dec16(&mut reg.L,&mut reg.H),
         //DEC SP
-        0x3b
+        0x3b => {
+            reg.SP -= 1;
+            Some(1)
+        },
 
         //INC (HL)
         0x34
@@ -524,23 +618,25 @@ fn instruct(&mut ram : Ram, &mut reg : Registers)
 
 
         //ADD A,B
-        0x80
+        0x80 => add(reg.B),
         //ADD A,C
-        0x81
+        0x81 => add(reg.C),
         //ADD A,D
-        0x82
+        0x82 => add(reg.D),
         //ADD A,E
-        0x83
+        0x83 => add(reg.E),
         //ADD A,H
-        0x84
+        0x84 => add(reg.H),
         //ADD A,L
-        0x85
+        0x85 => add(reg.L),
         //ADD A,(HL)
         0x86
         //ADD A,A
-        0x87
+        0x87 => add(reg.A),
         //ADD HL,BC
-        0x09
+        0x09 => {
+            
+        }
         //ADD HL,DE
         0x19
         //ADD HL,HL
