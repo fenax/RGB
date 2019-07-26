@@ -15,9 +15,12 @@ struct Registers {
 }
 
 struct Ram{
-ram:u8[8*1024],
-rom:u8[32*1024],
-vram:u8[8*1024]
+    ram:u8[0x2000],
+    rom:u8[0x4000],
+    vram:u8[0x2000],
+    hram:u8[0x7f],
+    spoof:u8,
+    ir:u8
 }
 
 impl Ram{
@@ -47,18 +50,78 @@ impl Ram{
          16kB ROM bank #0                 |    
         --------------------------- 0000 --
           */
+    fn resolve(a:u16)->ref mut u8{
+        match a {
+            0x0000 .. 0x4000 => //ROM #0
+            {
+                &ram.rom[a%0x4000]
+            },
+            0x4000 .. 0x8000 => //ROM SWITCH
+            {
+                &ram.spoof
+            },
+            0x8000 .. 0xa000 => //VRAM
+            {
+                &ram.vram[a%0x2000]
+            },
+            0xa000 .. 0xc000 => //RAM SWITCH
+            {
+                &ram.spoof
+            },
+            0xc000 .. 0xe000 => //RAM INTERN
+            {
+                &ram.ram[a%0x2000]
+            },
+            0xe000 .. 0xfe00 => //RAM INTERN EC
+            {
+                &ram.ram[a%0x2000]
+            },
+            0xfe00 .. 0xfea0 => //OAM
+            {
+                &ram.spoof
+            },
+            0xff00 .. 0xff4c => //IO
+            {
+                &ram.spoof
+            },
+            0xff80 .. 0xffff => //HIGH RAM
+            {
+                &ram.hram[a-0xff80]
+            },
+            0xffff => // Interupt
+                &ram.ir,
+            0xfea0 .. 0xff00 | 0xff4c .. 0xff80
+                => // empty, no IO
+                {
+                    ram.spoof = 0;
+                    &ram.spoof
+                },
+        }
+    }
     fn read(a:u16)->u8{
-        0
+        resolve(a)
     }
     fn write(a:u16,v:u8){
-
+        resolve(a) = v;
     }
-    fn read8(h:u8,l:u8){
-        0
+    fn read8(l:u8,h:u8)->u8{
+        let a = u8tou16(l,h);
+        resolve(a)
     }
-    fn write8(h:u8,l:u8,v:u8){
-
+    fn write8(l:u8,h:u8,v:u8){
+        let a = u8tou16(l,h);
+        resolve(a) = v;
     }
+    fn write88(l:u8,h:u8,v:(u8,u8)){
+        let a = u8tou16(l,h);
+        resolve(a)  =v.0;
+        resolve(a+1)=v.1;
+    }
+    fn read88(l:u8,h:u8) -> (u8,u8){
+        let a = u8tou16(l,h);
+        (resolve(a),resolve(a+1))
+    }
+}
 }
 
 fn u8tou16(l:u8,h:u8) -> u16{
@@ -70,14 +133,37 @@ fn u16tou8(v:u16) -> (u8,u8){
 
 fn instruct(&mut ram : Ram, &mut reg : Registers)
 ->Option<u8>{
+    fn add16(b:u16)->Option<u8>{
+        let HL = u8tou16(reg.L,reg.H);
+        reg.Fh = ((HL&0xfff + b&0xfff)>0xfff);
+        reg.Fs = false;
+        let (r,c) = HL.overflowing_add(b);
+        reg.Fc = c;
+        let (l,h) = u16tou8(r);
+        reg.H = h;
+        reg.L = l;
+        Some(1)
+    }
     fn add(b:u8)->Option<u8>{
-        reg.Fh = ((a&0xf + b&0xf)>0xf);
+        reg.Fh = ((reg.A&0xf + b&0xf)>0xf);
         reg.Fs = false;
         let (r,c) = reg.A.overflowing_add(b);
         reg.Fz = r==0;
         reg.Fc = c;
         reg.A = r;
         None
+    }
+    fn sub16(b:u8)->Option<u8>{
+        let HL = u8tou16(reg.L,reg.H);
+        reg.Fh = HL&0xfff < b&0xfff;
+        reg.Fs = true;
+        let (r,c) = HL.overflowing_sub(b);
+        reg.Fz = r==0;
+        reg.Fc = c;
+        let (l,h) = u16tou8(r);
+        reg.H = h;
+        reg.L = l;
+        Some(1)
     }
     fn sub(b:u8)->Option<u8>{
         reg.Fh = a&0xf < b&0xf;
@@ -611,9 +697,17 @@ fn instruct(&mut ram : Ram, &mut reg : Registers)
         },
 
         //INC (HL)
-        0x34
+        0x34 => {
+            let mut (l,h) = read88(reg.L,reg.H);
+            inc16(&mut l,&mut h);
+            write88(reg.L,reg.H,(l,h));
+        }
         //DEC (HL)
-        0x35
+        0x35 => {
+            let mut (l,h) = read88(reg.L,reg.H);
+            dec16(&mut l,&mut h);
+            write88(reg.L,reg.H,(l,h));
+        }
 
 
 
@@ -630,19 +724,19 @@ fn instruct(&mut ram : Ram, &mut reg : Registers)
         //ADD A,L
         0x85 => add(reg.L),
         //ADD A,(HL)
-        0x86
+        0x86 => {
+            add(read8(reg.L,reg.H))
+        },
         //ADD A,A
         0x87 => add(reg.A),
         //ADD HL,BC
-        0x09 => {
-            
-        }
+        0x09 => add16(u8tou16(reg.C,reg.B)),
         //ADD HL,DE
-        0x19
+        0x19 => add16(u8tou16(reg.E,reg.D)),
         //ADD HL,HL
-        0x29
+        0x29 => add16(u8tou16(reg.L,reg.H)),
         //ADD HL,SP
-        0x39
+        0x39 => add16(reg.SP),
 
         //ADC A,B
         0x88
