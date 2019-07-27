@@ -133,6 +133,30 @@ fn u16tou8(v:u16) -> (u8,u8){
 
 fn instruct(&mut ram : Ram, &mut reg : Registers)
 ->Option<u8>{
+    fn and(b:u8)->Option<u8>{
+        reg.A = reg.A & b;
+        reg.Fz = reg.A == 0;
+        reg.Fs = false;
+        reg.Fh = true;
+        reg.Fc = false;
+        None
+    }
+    fn or(b:u8)->Option<u8>{
+        reg.A = reg.A | b;
+        reg.Fz = reg.A == 0;
+        reg.Fs = false;
+        reg.Fh = false;
+        reg.Fc = false;
+        None
+    }
+    fn xor(b:u8)->Option<u8>{
+        reg.A = reg.A ^ b;
+        reg.Fz = reg.A == 0;
+        reg.Fs = false;
+        reg.Fh = false;
+        reg.Fc = false;
+        None
+    }
     fn add16(b:u16)->Option<u8>{
         let HL = u8tou16(reg.L,reg.H);
         reg.Fh = ((HL&0xfff + b&0xfff)>0xfff);
@@ -174,6 +198,13 @@ fn instruct(&mut ram : Ram, &mut reg : Registers)
         reg.A = r;
         None
     }
+    fn cp(b:u8)->Option<u8>{
+        reg.Fh = a&0xf < b&0xf;
+        reg.Fs = true;
+        let (r,c) = reg.A.overflowing_sub(b);
+        reg.Fz = r==0;
+        reg.Fc = c;
+        None                                        }
     fn adc(b:u8)->Option<u8>{
         if reg.Fc {
             reg.Fh = (a&0xf + b&0xf + 1)>0xf;
@@ -739,158 +770,258 @@ fn instruct(&mut ram : Ram, &mut reg : Registers)
         0x39 => add16(reg.SP),
 
         //ADC A,B
-        0x88
+        0x88 => adc(reg.B),
         //ADC A,C
-        0x89
+        0x89 => adc(reg.C),
         //ADC A,D
-        0x8a
+        0x8a => adc(reg.D),
         //ADC A,E
-        0x8b
+        0x8b => adc(reg.E),
         //ADC A,H
-        0x8c
+        0x8c => adc(reg.H),
         //ADC A,L
-        0x8d
+        0x8d => adc(reg.L),
         //ADC A,(HL)
-        0x8e
+        0x8e => adc(read8(reg.L,reg.H)),
         //ADC A,A
-        0x8f
+        0x8f => adc(reg.A),
 
         //SUB B
-        0x90
+        0x90 => sub(reg.B),
         //SUB C
-        0x91
+        0x91 => sub(reg.C),
         //SUB D
-        0x92
+        0x92 => sub(reg.D),
         //SUB E
-        0x93
+        0x93 => sub(reg.E),
         //SUB H
-        0x94
+        0x94 => sub(reg.H),
         //SUB L
-        0x95
+        0x95 => sub(reg.L),
         //SUB (HL)
-        0x96
+        0x96 => sub(read8(reg.L,reg.H)),
         //SUB A
-        0x97
+        0x97 => sub(reg.A),
         //SUB d8
-        0xd6
+        0xd6 => sub(readOp(ram,reg)),
 
         //SBC A,B
-        0x98
+        0x98 => sbc(reg.B),
         //SBC A,C
-        0x99
+        0x99 => sbc(reg.C),
         //SBC A,D
-        0x9a
+        0x9a => sbc(reg.D),
         //SBC A,E
-        0x9b
+        0x9b => sbc(reg.E),
         //SBC A,H
-        0x9c
+        0x9c => sbc(reg.H),
         //SBC A,L
-        0x9d
+        0x9d => sbc(reg.L),
         //SBC A,(HL)
-        0x9e
+        0x9e => sbc(read8(reg.L,reg.H)),
         //SBC A,A
-        0x9f
+        0x9f => sbc(reg.A),
         //SBC A,d8
-        0xde
+        0xde => sbc(readOp(ram,reg)),
 
         //ADD A,d8
-        0xc6
+        0xc6 => add(readOp(ram,reg)),
         //ADC A,d8
-        0xce
+        0xce => adc(readOp(ram,reg)),
         
         //ADD SP,r8
-        0xe8
+        0xe8 => {
+            let b = readOp(ram,reg) as i8;
+            let bb = b as i16;
+            reg.Fz = false;
+            reg.Fs = false;
+            reg.Fh = ((reg.SP&0xfff + bb&0xfff)
+                      >0xfff);
+            let (r,c) =
+                reg.SP.overflowing_add(bb);
+            reg.SP = r;
+            reg.Fc = c;
+            Some(3)
+        },
 
 
         //RLCA
-        0x07
+        0x07 => {
+            let c = (reg.A & 0x80) != 0 ;
+            reg.A = (reg.A << 1) + c;
+            reg.Fc = c;
+            reg.Fz = reg.A == 0;
+            None
+        },
         //RRCA
-        0x0f
+        0x0f => {
+            let c = (reg.A & 1 ) !=0;
+            reg.A = (reg.A >> 1) +c?0x80:0;
+            reg.Fc = c;
+            reg.Fz = reg.A == 0;
+            None
+
+        },
         //RLA
-        0x17
+        0x17 => {
+            let c = (reg.A & 0x80) != 0 ;
+            reg.A = (reg.A << 1) + reg.Fc;
+            reg.Fc = c;
+            reg.Fz =reg.A == 0;
+            None
+        },
         //RRA
-        0x1f
+        0x1f => {
+            let c = (reg.A & 1 ) !=0;
+            reg.A = (reg.A >> 1) +reg.Fc?0x80:0;
+            reg.Fc = c;
+            reg.Fz = reg.A == 0;
+            None
+        },
         //DDA
-        0x27
+        0x27 => {
+            if (reg.Fh || (reg.A & 0x0f) > 9){
+                reg.A += 6;
+            }
+            if (reg.Fc || (reg.A >> 4) >9){
+                reg.A += 0x60; 
+                reg.Fc = true;
+            }
+            reg.Fz = reg.A == 0;
+            reg.Fh = false;
+            None
+        },
         //CPL
-        0x2f
+        0x2f => {
+            reg.A = !reg.A;
+            reg.Fs = true;
+            reg.Fh = true;
+            None
+        },
 
         //SCF set carry flag
-        0x37
+        0x37 => {
+            reg.Fc = true;
+            None
+        },
         //CCF clear carry flag
-        0x3f
+        0x3f => {
+            reg.Fc = false;
+            None
+        },
 
         
         //AND 
-        0xa0
-        0xa1
-        0xa2
-        0xa3
-        0xa4
-        0xa5
-        0xa6
-        0xa7
+        0xa0 => and(reg.B),
+        0xa1 => and(reg.C),
+        0xa2 => and(reg.D),
+        0xa3 => and(reg.E),
+        0xa4 => and(reg.H),
+        0xa5 => and(reg.L),
+        0xa6 => and(read8(reg.L,reg.H)),
+        0xa7 => and(reg.A),
         //AND d8
-        0xe6
+        0xe6 => and(readOp(mem,reg)),
         //XOR
-        0xa8
-        0xa9
-        0xaa
-        0xab
-        0xac
-        0xad
-        0xae
-        0xaf
+        0xa8 => xor(reg.B),
+        0xa9 => xor(reg.C),
+        0xaa => xor(reg.D),
+        0xab => xor(reg.E),
+        0xac => xor(reg.H),
+        0xad => xor(reg.L),
+        0xae => xor(read8(reg.L,reg.H)),
+        0xaf => xor(reg.A),
         //XOR d8
-        0xee
+        0xee => xor(readOp(mem,reg)),
         
         //OR
-        0xb0
-        0xb1
-        0xb2
-        0xb3
-        0xb4
-        0xb5
-        0xb6
-        0xb7
+        0xb0 => or(reg.B),
+        0xb1 => or(reg.C),
+        0xb2 => or(reg.D),
+        0xb3 => or(reg.E),
+        0xb4 => or(reg.H),
+        0xb5 => or(reg.L),
+        0xb6 => or(read8(reg.L,reg.H)),
+        0xb7 => or(reg.A),
         //OR d8
-        0xf6
+        0xf6 => or(readOp(mem,reg)),
         //CP
-        0xb8
-        0xb9
-        0xba
-        0xbb
-        0xbc
-        0xbd
-        0xbe
-        0xbf
+        0xb8 => cp(reg.B),
+        0xb9 => cp(reg.C),
+        0xba => cp(reg.D),
+        0xbb => cp(reg.E),
+        0xbc => cp(reg.H),
+        0xbd => cp(reg.L),
+        0xbe => cp(read8(reg.L,reg.H)),
+        0xbf => cp(reg.A),
         //CP d8
-        0xfe
+        0xfe => cp(readOp(mem,reg)),
     
         
         //LDH (a8),a
-        0xe0
+        0xe0 => {
+            write8(readOp(mem,reg),0xff,reg.A);
+            Some(2)
+        },
         //LD (C),A
-        0xe2
+        0xe2 => {
+            write8(reg.C,0xff,reg.A);
+            Some(1)
+        },
         //LD (a16),A
-        0xea
-
-
+        0xea => {
+            let l = readOp(mem,reg);
+            let h = readOp(mem,reg);
+            write8(l,h,reg.A);
+            Some(3)
+        },
 
         //LDH a,(a8)
-        0xf0
+        0xf0 => {
+            reg.A = read8(readOp(mem,reg),0xff);
+            Some(2)
+        },
         //LD A,(C)
-        0xf2
+        0xf2 => {
+            reg.A = read8(reg.C,0xff);
+            Some(1)
+        },
 
         //LD HL,SP+r8
-        0xf8
+        0xf8 => {
+            let b = readOp(mem,reg) as i8;
+            let bb = b as i16;
+            reg.Fz = false;
+            reg.Fs = false;
+            reg.Fh = ((reg.SP&0xfff + bb&0xfff)
+                      >0xfff);
+            let (r,c) =
+                reg.SP.overflowing_add(bb);
+            reg.Fc = c;
+            reg.L = read16(r);
+            reg.H = read16(r+1);
+            Some(3)
+        }
         //LD SP,HL
-        0xf9
+        0xf9 => {
+            reg.SP = u8tou16(reg.L,reg.H);
+            Some(1)
+        }
         //LD A,(a16)
-        0xfa
+        0xfa => {
+            let l = readOp(mem,reg);
+            let h = readOp(mem,reg);
+            reg.A = read8(l,h);
+            Some(3)
+        }
 
         //POP BC
-        0xc1
+        0xc1 => {
+            read16(reg.SP,reg.C);
+            read16(reg.SP+1,reg.B);
+            reg.SP +=2;
+            Some(3)
+        }
         //POP DE
         0xd1
         //POP HL
@@ -899,7 +1030,12 @@ fn instruct(&mut ram : Ram, &mut reg : Registers)
         0xf1
 
         //PUSH BC
-        0xc5
+        0xc5 => {
+            reg.SP -= 2;
+            write16(reg.SP,reg.C);
+            write16(reg.SP+1,reg.B);
+            Some(3)
+        }
         //PUSH DE
         0xd5
         //PUSH HL
