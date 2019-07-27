@@ -273,6 +273,25 @@ impl Ram{
         let a = u8tou16(l,h);
         (*self.resolve(a),*self.resolve(a+1))
     }
+    fn push88(&mut self,sp:&mut u16,l:u8,h:u8){
+        *sp -= 2;
+        *self.resolve(*sp) = l;
+        *self.resolve(*sp+1) = h;
+    }
+    fn push16(&mut self,sp:&mut u16,v:u16){
+        let (l,h) = u16tou8(v);
+        self.push88(sp,l,h)
+    }
+    fn pop88(&mut self,sp:&mut u16)->(u8,u8){
+        let l = *self.resolve(*sp);
+        let h = *self.resolve(*sp+1);
+        *sp += 2;
+        (l,h)
+    }
+    fn pop16(&mut self,sp:&mut u16)->u16{
+        let (l,h) = self.pop88(sp);
+        u8tou16(l,h)
+    }
 }
 
 
@@ -281,6 +300,11 @@ fn u8tou16(l:u8,h:u8) -> u16{
 }
 fn u16tou8(v:u16) -> (u8,u8){
     (v as u8, (v>>8) as u8)
+}
+fn u8toi16(v:u8) -> u16{
+    let v = v as i8;
+    let v = v as i16;
+    v as u16
 }
 
 fn instruct(ram : &mut Ram, reg : &mut Registers, alu: &mut Alu)
@@ -1149,67 +1173,231 @@ fn instruct(ram : &mut Ram, reg : &mut Registers, alu: &mut Alu)
         },
 
         //JR r8
-        0x18 => None,
+        0x18 => {
+            let arg1 = u8toi16(readOp(ram,reg));
+            reg.PC.wrapping_add(arg1);
+            Some(1)
+        },
         //JR NZ,r8
-        0x20 => None,
+        0x20 => {
+            let arg1 = u8toi16(readOp(ram,reg));
+            if(!alu.Fzero) {
+                reg.PC.wrapping_add(arg1);
+            }
+            Some(1)
+        },
         //JR Z,r8
-        0x28 => None,
+        0x28 =>{
+            let arg1 = u8toi16(readOp(ram,reg));
+            if(alu.Fzero) {
+                reg.PC.wrapping_add(arg1);
+            }
+            Some(1)
+        },
         //JR NC,r8
-        0x30 => None,
+        0x30 => {
+            let arg1 = u8toi16(readOp(ram,reg));
+            if(!alu.Fcarry){
+                reg.PC.wrapping_add(arg1);
+            }
+            Some(1)
+        },
         //JR C,r8
-        0x38 => None,
+        0x38 => {
+            let arg1 = u8toi16(readOp(ram,reg));
+            if(alu.Fcarry){
+                reg.PC.wrapping_add(arg1);
+            }
+            Some(1)
+        },
+
         //JP NZ,a16
-        0xc2 => None,
+        0xc2 => {
+            let arg1 = readOp(ram,reg);
+            let arg2 = readOp(ram,reg);
+            if(!alu.Fzero){
+                reg.PC = u8tou16(arg1,arg2);
+            }
+            Some(3)
+        },
         //JP a16
-        0xc3 => None,
+        0xc3 => {
+            let arg1 = readOp(ram,reg);
+            let arg2 = readOp(ram,reg);
+            reg.PC = u8tou16(arg1,arg2);
+            Some(3)
+        },
         //JP Z,a16
-        0xca => None,
-        //JP NZ,a16
-        0xd2 => None,
+        0xca => {
+            let arg1 = readOp(ram,reg);
+            let arg2 = readOp(ram,reg);
+            if(alu.Fzero){
+                reg.PC = u8tou16(arg1,arg2);
+            }
+            Some(3)
+        },
+        //JP NC,a16
+        0xd2 => {
+            let arg1 = readOp(ram,reg);
+            let arg2 = readOp(ram,reg);
+            if(!alu.Fcarry){
+                reg.PC = u8tou16(arg1,arg2);
+            }
+            Some(3)
+        },
         //JP C,a16
-        0xda => None,
+        0xda => {
+            let arg1 = readOp(ram,reg);
+            let arg2 = readOp(ram,reg);
+            if(alu.Fcarry){
+                reg.PC = u8tou16(arg1,arg2);
+            }
+            Some(3)
+        },
         //JP (HL)
-        0xe9 => None,
+        0xe9 => {
+            reg.PC = u8tou16(reg.L,reg.H);
+            Some(3)
+        },
 
         //CALL NZ,a16
-        0xc4 => None,
+        0xc4 => {
+            let arg1 = readOp(ram,reg);
+            let arg2 = readOp(ram,reg);
+            if(!alu.Fzero){
+                ram.push16(&mut reg.SP, reg.PC);
+                reg.PC = u8tou16(arg1, arg2);
+            }
+            Some(3)
+        },
         //CALL Z,a16
-        0xcc => None,
+        0xcc =>{
+            let arg1 = readOp(ram,reg);
+            let arg2 = readOp(ram,reg);
+            if(alu.Fzero){
+                ram.push16(&mut reg.SP, reg.PC);
+                reg.PC = u8tou16(arg1, arg2);
+            }
+            Some(3)
+        } ,
         //CALL a16
-        0xcd => None,
+        0xcd =>{
+            let arg1 = readOp(ram,reg);
+            let arg2 = readOp(ram,reg);
+            let (pcl,pch) = u16tou8(reg.PC);
+            ram.push16(&mut reg.SP, reg.PC);
+            reg.PC = u8tou16(arg1, arg2);
+            Some(3)
+        } ,
         //CALL NC,a16
-        0xd4 => None,
+        0xd4 =>{
+            let arg1 = readOp(ram,reg);
+            let arg2 = readOp(ram,reg);
+            if(!alu.Fcarry){
+                ram.push16(&mut reg.SP, reg.PC);
+                reg.PC = u8tou16(arg1, arg2);
+            }
+            Some(3)
+        } ,
         //CALL C,a16
-        0xdc => None,
+        0xdc =>{
+            let arg1 = readOp(ram,reg);
+            let arg2 = readOp(ram,reg);
+            if(alu.Fcarry){
+                ram.push16(&mut reg.SP, reg.PC);
+                reg.PC = u8tou16(arg1, arg2);
+            }
+            Some(3)
+        } ,
+
         //RST 00H
-        0xc7 => None,
+        0xc7 => {
+            ram.push16(&mut reg.SP,reg.PC);
+            reg.PC = 0x0000;
+            Some(7)
+        },
         //RST 08H
-        0xcf => None,
+        0xcf =>  {
+            ram.push16(&mut reg.SP,reg.PC);
+            reg.PC = 0x0008;
+            Some(7)
+        },
         //RST 10H
-        0xd7 => None,
+        0xd7 => {
+            ram.push16(&mut reg.SP,reg.PC);
+            reg.PC = 0x0010;
+            Some(7)
+        } ,
         //RST 18H
-        0xdf => None,
+        0xdf => {
+            ram.push16(&mut reg.SP,reg.PC);
+            reg.PC = 0x0018;
+            Some(7)
+        } ,
         //RST 20H
-        0xe7 => None,
+        0xe7 => {
+            ram.push16(&mut reg.SP,reg.PC);
+            reg.PC = 0x0020;
+            Some(7)
+        } ,
         //RST 28H
-        0xef => None,
+        0xef => {
+            ram.push16(&mut reg.SP,reg.PC);
+            reg.PC = 0x0028;
+            Some(7)
+        } ,
         //RST 30H
-        0xf7 => None,
+        0xf7 => {
+            ram.push16(&mut reg.SP,reg.PC);
+            reg.PC = 0x0030;
+            Some(7)
+        } ,
         //RST 38H
-        0xff => None,
+        0xff => {
+            ram.push16(&mut reg.SP,reg.PC);
+            reg.PC = 0x0038;
+            Some(7)
+        } ,
 
         //RET NZ
-        0xc0 => None,
+        0xc0 => {
+            if(!alu.Fzero){
+                reg.PC = ram.pop16(&mut reg.SP);
+            }
+            Some(1)
+        },
         //RET Z
-        0xc8 => None,
+        0xc8 => {
+            if(alu.Fzero){ 
+                reg.PC = ram.pop16(&mut reg.SP);
+            }
+            Some(1)
+        },
         //RET
-        0xc9 => None,
+        0xc9 => {
+            reg.PC = ram.pop16(&mut reg.SP);
+            Some(1)
+        },
         //RET NC
-        0xd0 => None,
+        0xd0 => {
+            if(!alu.Fcarry){
+                reg.PC = ram.pop16(&mut reg.SP);
+            }
+            Some(1)
+        },
         //RET C
-        0xd8 => None,
+        0xd8 => {
+            if(alu.Fcarry){
+                reg.PC = ram.pop16(&mut reg.SP);
+            }
+            Some(1)
+        },
         //RETI
-        0xd9 => None,
+        0xd9 => {
+            reg.PC = ram.pop16(&mut reg.SP);
+            //TODO implement interrupts.
+            Some(1)
+        },
 
         //DI
         0xf3 => None,
