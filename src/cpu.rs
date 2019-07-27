@@ -6,6 +6,20 @@ struct Alu{
 }
 
 impl Alu{
+    fn get_f(&self)->u8{
+        let mut r = 0 as u8;
+        if(self.Fzero) {r+= 1<<7};
+        if(self.Fsub)  {r+= 1<<6};
+        if(self.Fhalf) {r+= 1<<5};
+        if(self.Fcarry){r+= 1<<4};
+        r
+    }
+    fn set_f(&mut self, f: u8){
+        self.Fzero = (f & 1<<7)!=0;
+        self.Fsub  = (f & 1<<6)!=0;
+        self.Fhalf = (f & 1<<5)!=0;
+        self.Fcarry= (f & 1<<4)!=0;
+    }
     fn set_flags(&mut self,z:bool,s:bool,h:bool,c:bool){
         self.Fzero = z;
         self.Fsub = s;
@@ -1062,19 +1076,19 @@ fn instruct(ram : &mut Ram, reg : &mut Registers, alu: &mut Alu)
             reg.L = ram.read(r);
             reg.H = ram.read(r+1);
             Some(3)
-        }
+        },
         //LD SP,HL
         0xf9 => {
             reg.SP = u8tou16(reg.L,reg.H);
             Some(1)
-        }
+        },
         //LD A,(a16)
         0xfa => {
             let l = readOp(ram,reg);
             let h = readOp(ram,reg);
             reg.A = ram.read8(l,h);
             Some(3)
-        }
+        },
 
         //POP BC
         0xc1 => {
@@ -1082,13 +1096,28 @@ fn instruct(ram : &mut Ram, reg : &mut Registers, alu: &mut Alu)
             reg.B = ram.read(reg.SP+1);
             reg.SP +=2;
             Some(3)
-        }
+        },
         //POP DE
-        0xd1 => None,
+        0xd1 =>{
+            reg.E = ram.read(reg.SP);
+            reg.B = ram.read(reg.SP+1);
+            reg.SP += 2;
+            Some(3)
+        },
         //POP HL
-        0xe1 => None,
+        0xe1 => {
+            reg.L = ram.read(reg.SP);
+            reg.H = ram.read(reg.SP+1);
+            reg.SP += 2;
+            Some(3)
+        },
         //POP AF
-        0xf1 => None,
+        0xf1 => {
+            alu.set_f(ram.read(reg.SP));
+            reg.A   = ram.read(reg.SP+1);
+            reg.SP += 2;
+            Some(3)
+        },
 
         //PUSH BC
         0xc5 => {
@@ -1096,13 +1125,28 @@ fn instruct(ram : &mut Ram, reg : &mut Registers, alu: &mut Alu)
             ram.write(reg.SP,reg.C);
             ram.write(reg.SP+1,reg.B);
             Some(3)
-        }
+        },
         //PUSH DE
-        0xd5 => None,
+        0xd5 => {
+            reg.SP -= 2;
+            ram.write(reg.SP,reg.E);
+            ram.write(reg.SP+1,reg.D);
+            Some(3)
+        },
         //PUSH HL
-        0xe5 => None,
+        0xe5 => {
+            reg.SP -= 2;
+            ram.write(reg.SP,reg.L);
+            ram.write(reg.SP+1,reg.H);
+            Some(3)
+        },
         //PUSH AF
-        0xf5 => None,
+        0xf5 => {
+            reg.SP -= 2;
+            ram.write(reg.SP,alu.get_f());
+            ram.write(reg.SP+1,reg.A);
+            Some(3)
+        },
 
         //JR r8
         0x18 => None,
