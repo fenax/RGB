@@ -1,12 +1,34 @@
-struct Alu{
+use std::fmt;
+
+pub struct Alu{
     Fzero:bool,
     Fsub:bool,
     Fhalf:bool,
     Fcarry:bool,
 }
 
+impl fmt::Display for Alu{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>)
+     -> fmt::Result 
+    {
+        write!(f, "{}{}{}{}", 
+               if self.Fzero {"Z"}else{"-"},
+               if self.Fsub  {"S"}else{"-"},
+               if self.Fhalf {"H"}else{"-"},
+               if self.Fcarry{"C"}else{"-"})
+    }
+}
+
 impl Alu{
-    fn get_f(&self)->u8{
+    pub fn origin() -> Alu{
+        Alu{
+            Fzero:false,
+            Fsub:false,
+            Fhalf:false,
+            Fcarry:false
+        }
+    }
+    pub fn get_f(&self)->u8{
         let mut r = 0 as u8;
         if(self.Fzero) {r+= 1<<7};
         if(self.Fsub)  {r+= 1<<6};
@@ -14,48 +36,48 @@ impl Alu{
         if(self.Fcarry){r+= 1<<4};
         r
     }
-    fn set_f(&mut self, f: u8){
+    pub fn set_f(&mut self, f: u8){
         self.Fzero = (f & 1<<7)!=0;
         self.Fsub  = (f & 1<<6)!=0;
         self.Fhalf = (f & 1<<5)!=0;
         self.Fcarry= (f & 1<<4)!=0;
     }
-    fn set_flags(&mut self,z:bool,s:bool,h:bool,c:bool){
+    pub fn set_flags(&mut self,z:bool,s:bool,h:bool,c:bool){
         self.Fzero = z;
         self.Fsub = s;
         self.Fhalf = h;
         self.Fcarry = c;
     }
-    fn and(&mut self,a:&mut u8,b:u8)->Option<u8>{
+    pub fn and(&mut self,a:&mut u8,b:u8)->Option<u8>{
         *a = *a & b;
         self.set_flags(*a==0, false,true,false);
         None
     }
-    fn or(&mut self,a:&mut u8,b:u8)->Option<u8>{
+    pub fn or(&mut self,a:&mut u8,b:u8)->Option<u8>{
         *a = *a | b;
         self.set_flags(*a==0,false,false,false);
         None
     }
-    fn xor(&mut self,a:&mut u8,b:u8)->Option<u8>{
+    pub fn xor(&mut self,a:&mut u8,b:u8)->Option<u8>{
         *a = *a ^ b;
         self.set_flags(*a==0,false,false,false);
         None
     }
-    fn add16(&mut self,l:&mut u8,h:&mut u8,b:u16)->Option<u8>{
+    pub fn add16(&mut self,l:&mut u8,h:&mut u8,b:u16)->Option<u8>{
         let HL = u8tou16(*l,*h);
         let (rl,rh) = u16tou8(self.add16_(HL,b));
         *h = rh;
         *l = rl;
         Some(1)
     }
-    fn add16_(&mut self,a: u16, b: u16)->u16{
+    pub fn add16_(&mut self,a: u16, b: u16)->u16{
         self.Fhalf = (((a&0xfff) + (b&0xfff))>0xfff);
         self.Fsub = false;
         let (r,c) = a.overflowing_add(b);
         self.Fcarry = c;
         r
     }
-    fn add(&mut self,a:&mut u8,b:u8)->Option<u8>{
+    pub fn add(&mut self,a:&mut u8,b:u8)->Option<u8>{
         self.Fhalf = (((*a&0xf) + (b&0xf))>0xf);
         self.Fsub = false;
         let (r,c) = a.overflowing_add(b);
@@ -64,7 +86,7 @@ impl Alu{
         *a = r;
         None
     }
-    fn sub16(&mut self,l:&mut u8,h:&mut u8,b:u8)->Option<u8>{
+    pub fn sub16(&mut self,l:&mut u8,h:&mut u8,b:u8)->Option<u8>{
         let HL = u8tou16(*l,*h);
         self.Fhalf = HL&0xfff < (b as u16)&0xfff;
         self.Fsub = true;
@@ -76,7 +98,7 @@ impl Alu{
         *l=rl;
         Some(1)
     }
-    fn sub(&mut self,a:&mut u8,b:u8)->Option<u8>{
+    pub fn sub(&mut self,a:&mut u8,b:u8)->Option<u8>{
         self.Fhalf = *a & 0xf < b & 0xf;
         self.Fsub = true;
         let (r,c) = a.overflowing_sub(b);
@@ -85,7 +107,7 @@ impl Alu{
         *a = r;
         None
     }
-    fn cp(&mut self,a: u8,b:u8)->Option<u8>{
+    pub fn cp(&mut self,a: u8,b:u8)->Option<u8>{
         self.Fhalf = a & 0xf < b&0xf;
         self.Fsub = true;
         let (r,c) = a.overflowing_sub(b);
@@ -93,7 +115,7 @@ impl Alu{
         self.Fcarry = c;
         None
     }
-    fn adc(&mut self,a:&mut u8,b:u8)->Option<u8>{
+    pub fn adc(&mut self,a:&mut u8,b:u8)->Option<u8>{
         if self.Fcarry {
             self.Fhalf = ((*a&0xf) + (b&0xf + 1))>0xf;
             self.Fsub = false;
@@ -105,7 +127,7 @@ impl Alu{
             None
         }else{ self.add(a,b) }
     }
-    fn sbc(&mut self,a:&mut u8,b:u8)->Option<u8>{
+    pub fn sbc(&mut self,a:&mut u8,b:u8)->Option<u8>{
         if self.Fcarry {
             self.Fhalf = *a&0xf <= b&0xf;
             self.Fsub = true;
@@ -117,31 +139,31 @@ impl Alu{
             None
         }else{ self.sub(a,b) }
     }
-    fn inc(&mut self,a:&mut u8)->Option<u8>{
-        *a+=1;
+    pub fn inc(&mut self,a:&mut u8)->Option<u8>{
+        *a = a.wrapping_add(1);
         self.Fhalf = (*a&0xf) == 0;
         self.Fsub = false;
         self.Fzero = *a==0;
         None
     }
-    fn dec(&mut self,a:&mut u8)->Option<u8>{
-        *a-=1;
+    pub fn dec(&mut self,a:&mut u8)->Option<u8>{
+        *a = a.wrapping_sub(1);
         self.Fhalf = (*a&0xf) == 0xf;
         self.Fsub = true;
         self.Fzero = *a==0;
         None
     }
-    fn inc16(& self,l:&mut u8,h:&mut u8)->Option<u8>{
+    pub fn inc16(& self,l:&mut u8,h:&mut u8)->Option<u8>{
         let mut r = u8tou16(*l,*h);
-        r+=1;
+        r = r.wrapping_add(1);
         let (rl,rh) = u16tou8(r);
         *l = rl;
         *h = rh;
         Some(1)
     }
-    fn dec16(& self,l:&mut u8,h:&mut u8)->Option<u8>{
+    pub fn dec16(& self,l:&mut u8,h:&mut u8)->Option<u8>{
         let mut r = u8tou16(*l,*h);
-        r-=1;
+        r = r.wrapping_sub(1);
         let (rl,rh) = u16tou8(r);
         *l = rl;
         *h = rh;
@@ -150,7 +172,7 @@ impl Alu{
 
 }
 
-struct Registers {
+pub struct Registers {
     A:u8,
     B:u8,
     C:u8,
@@ -159,22 +181,63 @@ struct Registers {
     H:u8,
     L:u8,
     SP:u16,
-    PC:u16,
+    pub PC:u16,
+}
+
+impl fmt::Display for Registers{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>)        -> fmt::Result
+    {
+        write!(f, "A:{:02x} BC:{:02x}{:02x} DE:{:02x}{:02x} HL:{:02x}{:02x} SP:{:04x} PC:{:04x}",
+               self.A,self.B,self.C,
+               self.D,self.E,self.H,
+               self.L,self.SP,self.PC)
+    }
 }
 
 impl Registers{
+    pub fn origin() -> Registers{
+        Registers{
+            A:0,
+            B:0,
+            C:0,
+            D:0,
+            E:0,
+            H:0,
+            L:0,
+            SP:0,
+            PC:0
+        }
+    }
 }
 
-struct Ram{
-    ram:[u8;0x2000],
-    rom:[u8;0x4000],
+pub struct Ram{
+    pub ram:[u8;0x2000],
+    pub rom:[u8;0x4000],
+    pub romswitch:[u8;0x4000],
     vram:[u8;0x2000],
     hram:[u8;0x7f],
+    oam:[u8;0xa0],
+    io:[u8;0x4c],
     spoof:u8,
-    ir:u8
+    ir:u8,
+    touch_io:bool
 }
 
 impl Ram{
+    pub fn origin() -> Ram{
+        Ram{
+            ram:[0;0x2000],
+            rom:[0;0x4000],
+            romswitch:[0;0x4000],
+            vram:[0;0x2000],
+            hram:[0;0x7f],
+            oam:[0;0xa0],
+            io:[0;0x4c],
+            spoof:0,
+            ir:0,
+            touch_io:false
+        }
+    }
     /*
          Interrupt Enable Register    
         --------------------------- FFFF
@@ -209,7 +272,7 @@ impl Ram{
             },
             0x4000 ... 0x7fff => //ROM SWITCH
             {
-                &mut self.spoof
+                &mut self.romswitch[(a-0x4000) as usize]
             },
             0x8000 ... 0x9fff => //VRAM
             {
@@ -229,11 +292,11 @@ impl Ram{
             },
             0xfe00 ... 0xfe9f => //OAM
             {
-                &mut self.spoof
+                &mut self.oam[(a-0xfe00) as usize]
             },
             0xff00 ... 0xff4b => //IO
             {
-                &mut self.spoof
+                &mut self.io[(a-0xff00) as usize]
             },
             0xff80 ... 0xfffe => //HIGH RAM
             {
@@ -250,67 +313,71 @@ impl Ram{
             _ => panic!("all ram should be covered")
         }
     }
-    fn read(&mut self,a:u16)->u8{
+    pub fn read(&mut self,a:u16)->u8{
         *self.resolve(a)
     }
-    fn write(&mut self,a:u16,v:u8){
+    pub fn write(&mut self,a:u16,v:u8){
         *self.resolve(a) = v;
+
+        println!("wrote {:02x}:{} at {:04x}",v,v as char,a);
     }
-    fn read8(&mut self,l:u8,h:u8)->u8{
+    pub fn read8(&mut self,l:u8,h:u8)->u8{
         let a = u8tou16(l,h);
         *self.resolve(a)
     }
-    fn write8(&mut self,l:u8,h:u8,v:u8){
+    pub fn write8(&mut self,l:u8,h:u8,v:u8){
         let a = u8tou16(l,h);
-        *self.resolve(a) = v;
+        self.write(a,v);
     }
-    fn write88(&mut self,l:u8,h:u8,v:(u8,u8)){
+    pub fn write88(&mut self,l:u8,h:u8,v:(u8,u8)){
         let a = u8tou16(l,h);
-        *self.resolve(a)  =v.0;
-        *self.resolve(a+1)=v.1;
+        self.write(a,v.0);
+        self.write(a+1,v.1);
     }
-    fn read88(&mut self,l:u8,h:u8) -> (u8,u8){
+    pub fn read88(&mut self,l:u8,h:u8) -> (u8,u8){
         let a = u8tou16(l,h);
         (*self.resolve(a),*self.resolve(a+1))
     }
-    fn push88(&mut self,sp:&mut u16,l:u8,h:u8){
+    pub fn push88(&mut self,sp:&mut u16,l:u8,h:u8){
         *sp -= 2;
         *self.resolve(*sp) = l;
         *self.resolve(*sp+1) = h;
     }
-    fn push16(&mut self,sp:&mut u16,v:u16){
+    pub fn push16(&mut self,sp:&mut u16,v:u16){
         let (l,h) = u16tou8(v);
         self.push88(sp,l,h)
     }
-    fn pop88(&mut self,sp:&mut u16)->(u8,u8){
+    pub fn pop88(&mut self,sp:&mut u16)->(u8,u8){
         let l = *self.resolve(*sp);
         let h = *self.resolve(*sp+1);
         *sp += 2;
         (l,h)
     }
-    fn pop16(&mut self,sp:&mut u16)->u16{
+    pub fn pop16(&mut self,sp:&mut u16)->u16{
         let (l,h) = self.pop88(sp);
         u8tou16(l,h)
     }
 }
 
 
-fn u8tou16(l:u8,h:u8) -> u16{
-    (h as u16)<<8 & (l as u16)
+pub fn u8tou16(l:u8,h:u8) -> u16{
+    ((h as u16)<<8) + (l as u16)
 }
-fn u16tou8(v:u16) -> (u8,u8){
+pub fn u16tou8(v:u16) -> (u8,u8){
     (v as u8, (v>>8) as u8)
 }
-fn u8toi16(v:u8) -> u16{
+pub fn u8toi16(v:u8) -> u16{
     let v = v as i8;
     let v = v as i16;
     v as u16
 }
 
-fn instruct(ram : &mut Ram, reg : &mut Registers, alu: &mut Alu)
+pub fn instruct(ram : &mut Ram, reg : &mut Registers, alu: &mut Alu)
 ->Option<u8>{
     fn readOp(ram:&mut Ram, reg:&mut Registers) -> u8{
         let r = ram.read(reg.PC);
+  /*      println!("Read {:02x} at {:02x}",
+                 r,reg.PC);*/
         reg.PC += 1;
         r
     }
@@ -1175,14 +1242,15 @@ fn instruct(ram : &mut Ram, reg : &mut Registers, alu: &mut Alu)
         //JR r8
         0x18 => {
             let arg1 = u8toi16(readOp(ram,reg));
-            reg.PC.wrapping_add(arg1);
+            reg.PC = reg.PC.wrapping_add(arg1);
             Some(1)
         },
         //JR NZ,r8
         0x20 => {
             let arg1 = u8toi16(readOp(ram,reg));
             if(!alu.Fzero) {
-                reg.PC.wrapping_add(arg1);
+                reg.PC =
+                    reg.PC.wrapping_add(arg1);
             }
             Some(1)
         },
@@ -1190,7 +1258,8 @@ fn instruct(ram : &mut Ram, reg : &mut Registers, alu: &mut Alu)
         0x28 =>{
             let arg1 = u8toi16(readOp(ram,reg));
             if(alu.Fzero) {
-                reg.PC.wrapping_add(arg1);
+                reg.PC =
+                    reg.PC.wrapping_add(arg1);
             }
             Some(1)
         },
@@ -1198,7 +1267,8 @@ fn instruct(ram : &mut Ram, reg : &mut Registers, alu: &mut Alu)
         0x30 => {
             let arg1 = u8toi16(readOp(ram,reg));
             if(!alu.Fcarry){
-                reg.PC.wrapping_add(arg1);
+                reg.PC =
+                    reg.PC.wrapping_add(arg1);
             }
             Some(1)
         },
@@ -1206,7 +1276,8 @@ fn instruct(ram : &mut Ram, reg : &mut Registers, alu: &mut Alu)
         0x38 => {
             let arg1 = u8toi16(readOp(ram,reg));
             if(alu.Fcarry){
-                reg.PC.wrapping_add(arg1);
+                reg.PC =
+                    reg.PC.wrapping_add(arg1);
             }
             Some(1)
         },
@@ -1411,7 +1482,7 @@ fn instruct(ram : &mut Ram, reg : &mut Registers, alu: &mut Alu)
 
 
         //PREFIX CB
-        0xcb => None,
+        0xcb => panic!("not implemented"),
 
         //FIRE
         0xd3 | 0xdb | 0xdd | 0xe3 |
