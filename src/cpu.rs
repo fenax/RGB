@@ -1,3 +1,6 @@
+mod cb;
+use self::cb::*;
+
 use std::fmt;
 
 pub struct Alu{

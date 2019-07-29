@@ -1,6 +1,10 @@
-fn instr_cb(mem: &mut Mem,
+//mod cpu;
+
+use cpu::*;
+
+fn instr_cb(ram: &mut Ram,
             reg: &mut Registers,
-            alu: &mut Alu
+            alu: &mut Alu,
             op:  u8)
     -> Option(u8){
         let op_r = op&0x7;
@@ -42,7 +46,7 @@ fn instr_cb(mem: &mut Mem,
                 // RR
                 3 => {
                     let c = val&1 != 0;
-                    val = val.wrapping_shr(1) + *alu.Fcarry as u8 << 7;
+                    val = val.wrapping_shr(1) + (*alu.Fcarry as u8) << 7;
                     *alu.Fcarry = c;
                 },
                 // SLA
@@ -67,7 +71,7 @@ fn instr_cb(mem: &mut Mem,
                     *alu.Fcarry = val&1;
                     val = val.wrapping_shr(1);
                 },
-                _ panic!("impossible")
+                _ => panic!("impossible")
                 }
                 alu.Fzero = val == 0;
                 alu.Fsub  = false;
