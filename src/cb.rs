@@ -70,13 +70,33 @@ fn instr_cb(mem: &mut Mem,
                 _ panic!("impossible")
                 }
                 alu.Fzero = val == 0;
+                alu.Fsub  = false;
+                alu.Fhalf = false;
             },
             // BIT
-            1 => ,
+            1 => {
+                alu.Fsub = false;
+                alu.Fhalf = true;
+                alu.Fzero = val&bit_mask == 0;
+            },
             // RES
-            2 => ,
+            2 => {val = val | bit_mask;},
             // SET
-            3 => ,
+            3 => {val = val & !bit_mask;},
+            _ => panic!("impossible")
+        };
+        match op_reg {
+            0 => {reg.B = val; Some(1)},
+            1 => {reg.C = val; Some(1)},
+            2 => {reg.D = val; Some(1)},
+            3 => {reg.E = val; Some(1)},
+            4 => {reg.H = val; Some(1)},
+            5 => {reg.L = val; Some(1)},
+            6 => {
+                ram.write8(reg.L,reg.H,val);
+                Some(3)
+            },
+            7 => {reg.A = val; Some(1)},
             _ => panic!("impossible")
         }
     }
