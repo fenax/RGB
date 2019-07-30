@@ -8,16 +8,16 @@ mod cpu;
 use cpu::*;
 
 struct Gameboy{
-    ram :Ram,
-    reg :Registers,
-    alu :Alu,
+    ram :cpu::ram::Ram,
+    reg :cpu::registers::Registers,
+    alu :cpu::alu::Alu,
 }
 impl Gameboy{
     fn Origin() -> Gameboy{
         let mut r = Gameboy{
-            ram : Ram::origin(),
-            reg : Registers::origin(),
-            alu : Alu::origin()
+            ram : cpu::ram::Ram::origin(),
+            reg : cpu::registers::Registers::origin(),
+            alu : cpu::alu::Alu::origin()
         };
         r.reg.PC=0x100;
         r
@@ -39,7 +39,7 @@ impl Gameboy{
            }else{
                cpu_wait -= 1;
            }
-           if clock > 100000 {break}
+           if clock > 100000000 {break}
 
         }
     }

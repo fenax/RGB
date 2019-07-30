@@ -2,17 +2,17 @@
 
 use cpu::*;
 
-fn instr_cb(ram: &mut Ram,
+pub fn instr_cb(ram: &mut Ram,
             reg: &mut Registers,
             alu: &mut Alu,
             op:  u8)
-    -> Option(u8){
-        let op_r = op&0x7;
+    -> Option<u8>{
+        let op_reg = op&0x7;
         let op_op = (op&0xc0)>>6;
         let op_bit = (op&0x38)>>3;
-        let bitmask = 1<<op_bit;
+        let bit_mask = 1<<op_bit;
         let mut val =
-        match(op_r){
+        match(op_reg){
             0 => reg.B,
             1 => reg.C,
             2 => reg.D,
@@ -29,36 +29,36 @@ fn instr_cb(ram: &mut Ram,
                 match op_bit{
                 // RLC
                 0 => {
-                    *alu.Fcarry = val&0x80;
+                    alu.Fcarry = val&0x80 != 0;
                     val = val.rotate_left(1);
                 },
                 // RRC
                 1 => {
-                    *alu.Fcarry = val&1;
+                    alu.Fcarry = val&1 !=0;
                     val = val.rotate_right(1);
                 },
                 // RL
                 2 => {
                     let c = val&0x80 != 0;
-                    val = val.wrapping_shl(1) + *alu.Fcarry as u8;
-                    *alu.Fcarry = c;
+                    val = val.wrapping_shl(1) + alu.Fcarry as u8;
+                    alu.Fcarry = c;
                 },
                 // RR
                 3 => {
                     let c = val&1 != 0;
-                    val = val.wrapping_shr(1) + (*alu.Fcarry as u8) << 7;
-                    *alu.Fcarry = c;
+                    val = val.wrapping_shr(1) + (alu.Fcarry as u8) << 7;
+                    alu.Fcarry = c;
                 },
                 // SLA
                 4 => {
-                    *alu.Fcarry = val&0x80;
+                    alu.Fcarry = val&0x80 != 0;
                     val = val.wrapping_shl(1);
                 },
                 // SRA
                 5 => {
-                    let c = val&0x80;
-                    *alu.Fcarry = val&1;
-                    val = val.wrapping_shr(1) + c;
+                    let c = val&0x80 != 0;
+                    alu.Fcarry = val&1 != 0;
+                    val = val.wrapping_shr(1) + c as u8;
                 },
                 // SWAP
                 6 => {
@@ -68,7 +68,7 @@ fn instr_cb(ram: &mut Ram,
                 },
                 // SRL
                 7 => {
-                    *alu.Fcarry = val&1;
+                    alu.Fcarry = val&1 != 0;
                     val = val.wrapping_shr(1);
                 },
                 _ => panic!("impossible")
