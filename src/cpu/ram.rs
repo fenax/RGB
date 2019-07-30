@@ -1,14 +1,19 @@
+mod io;
 use cpu::*;
 
 
 pub struct Ram{
+    joypad:io::Joypad,
+    serial:io::Serial,
+    dma:io::Dma,
+    timer:io::Timer,
+
     pub ram:[u8;0x2000],
     pub rom:[u8;0x4000],
     pub romswitch:[u8;0x4000],
     vram:[u8;0x2000],
     hram:[u8;0x7f],
     oam:[u8;0xa0],
-    io:[u8;0x4c],
     spoof:u8,
     ir:u8,
     touch_io:bool
@@ -17,6 +22,11 @@ pub struct Ram{
 impl Ram{
     pub fn origin() -> Ram{
         Ram{
+            joypad = io::Joypad::origin();
+            serial = io::Serial::origin();
+            dma    = io::Dma::origin();
+            timer  = io::Timer::origin();
+
             ram:[0;0x2000],
             rom:[0;0x4000],
             romswitch:[0;0x4000],
@@ -55,61 +65,78 @@ impl Ram{
          16kB ROM bank #0                 |    
         --------------------------- 0000 --
           */
-    fn resolve(&mut self,a:u16)->&mut u8{
+    pub fr read_io(&self,a:u16) -> u8{
+        match a {
+            0x00 => self.joypad.read(),
+            0x01 => self.serial.read_data(),
+            0x02 => self.serial.read_control(),
+            
+        }
+    }
+    pub fn read(&self,a:u16)->u8{
         match a {
             0x0000 ... 0x3fff => //ROM #0
-            {
-                &mut (self.rom[(a%0x4000) as usize])
-            },
+                self.rom[(a%0x4000) as usize],
             0x4000 ... 0x7fff => //ROM SWITCH
-            {
-                &mut self.romswitch[(a-0x4000) as usize]
-            },
+                self.romswitch[(a-0x4000) as usize],
             0x8000 ... 0x9fff => //VRAM
-            {
-                &mut self.vram[(a%0x2000) as usize]
-            },
+                self.vram[(a%0x2000) as usize],
             0xa000 ... 0xbfff => //RAM SWITCH
-            {
-                &mut self.spoof
-            },
+                panic!("access to unimplemented ram"),
             0xc000 ... 0xdfff => //RAM INTERN
-            {
-                &mut self.ram[(a%0x2000) as usize]
-            },
+                self.ram[(a%0x2000) as usize],
             0xe000 ... 0xfdff => //RAM INTERN EC
-            {
-                &mut self.ram[(a%0x2000) as usize]
-            },
+                self.ram[(a%0x2000) as usize],
             0xfe00 ... 0xfe9f => //OAM
-            {
-                &mut self.oam[(a-0xfe00) as usize]
-            },
+                self.oam[(a-0xfe00) as usize],
             0xff00 ... 0xff4b => //IO
             {
-                &mut self.io[(a-0xff00) as usize]
+                self.read_io(a - 0xff00)
             },
             0xff80 ... 0xfffe => //HIGH RAM
-            {
-                &mut self.hram[(a-0xff80) as usize]
-            },
+                self.hram[(a-0xff80) as usize],
             0xffff => // Interupt
-                &mut self.ir,
+                self.ir,
             0xfea0 ... 0xfeff | 0xff4c ... 0xff7f
                 => // empty, no IO
                 {
                     self.spoof = 0;
-                    &mut self.spoof
+                    0
                 },
             _ => panic!("all ram should be covered")
         }
     }
-    pub fn read(&mut self,a:u16)->u8{
-        *self.resolve(a)
-    }
+    
     pub fn write(&mut self,a:u16,v:u8){
-        *self.resolve(a) = v;
-
+        match a {
+            0x0000 ... 0x3fff => //ROM #0
+                self.rom[(a%0x4000) as usize] = v,
+            0x4000 ... 0x7fff => //ROM SWITCH
+                self.romswitch[(a-0x4000) as usize] = v,
+            0x8000 ... 0x9fff => //VRAM
+                self.vram[(a%0x2000) as usize] = v,
+            0xa000 ... 0xbfff => //RAM SWITCH
+                panic!("access to unimplemented ram"),
+            0xc000 ... 0xdfff => //RAM INTERN
+                self.ram[(a%0x2000) as usize] = v,
+            0xe000 ... 0xfdff => //RAM INTERN EC
+                self.ram[(a%0x2000) as usize] = v,
+            0xfe00 ... 0xfe9f => //OAM
+                self.oam[(a-0xfe00) as usize] = v,
+            0xff00 ... 0xff4b => //IO
+            {
+                self.write_io(a - 0xff00,v)
+            },
+            0xff80 ... 0xfffe => //HIGH RAM
+                self.hram[(a-0xff80) as usize] = v,
+            0xffff => // Interupt
+                self.ir = v,
+            0xfea0 ... 0xfeff | 0xff4c ... 0xff7f
+                => // empty, no IO
+                {
+                },
+            _ => panic!("all ram should be covered")
+        }
         println!("wrote {:02x}:{} at {:04x}",v,v as char,a);
     }
     pub fn read8(&mut self,l:u8,h:u8)->u8{
