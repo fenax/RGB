@@ -1,4 +1,6 @@
-struct Joypad{
+use cpu::*;
+
+pub struct Joypad{
     p14  : bool,
     p15  : bool,
     up   : bool,
@@ -36,9 +38,9 @@ impl Joypad{
                   |          |
         P13-------O-Down-----O-Start
                   |          |*/
-    pub fn write(&self,v :u8){
-        self.p14 = v & (1<<4);
-        self.p15 = v & (1<<5);
+    pub fn write(&mut self,v :u8){
+        self.p14 = (v & (1<<4)) != 0;
+        self.p15 = (v & (1<<5)) != 0;
     }
     pub fn read(&self)->u8{
         // unsure, assuming out port is out only.
@@ -59,11 +61,11 @@ impl Joypad{
         r
     }
     pub fn step(&self,clock:u32)->interrupt::Interrupt{
-        None
+        interrupt::Interrupt::None
     }
 }
 
-struct Serial{
+pub struct Serial{
     start : bool,
     started:bool,
     internal_clock : bool,
@@ -80,50 +82,53 @@ impl Serial{
             stoptime :0,
         }
     }
-    write_data(&mut self,v :u8){
+    pub fn write_data(&mut self,v :u8){
+        println!("Serial {:02x} {}",v,v as char);
         self.data = v;
     }
-    read_data(&self) -> u8{
+    pub fn read_data(&self) -> u8{
         self.data
     }
-    write_control(&mut self,v :u8){
-        self.start = v & (1<<7);
-        self.internal_clock = v & 1;
+    pub fn write_control(&mut self,v :u8){
+        self.start = (v & (1<<7)) != 0;
+        self.internal_clock = (v & 1) != 0;
     }
-    read_control(&self)->u8{
+    pub fn read_control(&self)->u8{
         let mut r = 0;
         r |= self.internal_clock as u8;
         r |= (self.start as u8) << 7;
         r
     }
     pub fn step(&mut self ,clock:u32)->interrupt::Interrupt{
-        if(started){
-            if(clock==stoptime){
-                start = false;
-                started=false;
-                data = 0xff;
+        if(self.started){
+            if(clock==self.stoptime){
+                self.start = false;
+                self.started=false;
+                self.data = 0xff;
                 interrupt::Interrupt::SerialTransfer
+            }else{
+                interrupt::Interrupt::None
             }
         }else{
             if (self.start){
                 self.started = true;
                 self.stoptime = clock + 1024;
             } 
+            interrupt::Interrupt::None
         }
-        None
     }
 
 }
 
-struct Dma{
+pub struct Dma{
     pub address : u8,
     pub todo : bool,
     pub doing : bool,
     stoptime : u32,
 }
 impl Dma{
-    pub fn origin() -> Serial{
-        Serial{
+    pub fn origin() -> Dma{
+        Dma{
             address : 0,
             todo : false,
             doing : false,
@@ -139,23 +144,23 @@ impl Dma{
     }
     pub fn step(&mut self, clock:u32)->interrupt::Interrupt{
         if(self.doing){
-            if(self.clock==self.stoptime){
+            if(clock==self.stoptime){
                 self.todo = false;
                 self.doing = false;
                 interrupt::Interrupt::DoDmaTransfer
-            }else None
+            }else{ interrupt::Interrupt::None }
         }else{
             if self.todo {
                 self.doing = true;
                 self.stoptime = clock + 128;
             }
-            None
+            interrupt::Interrupt::None
         }
         
     }
 }
 
-struct Timer{
+pub struct Timer{
     div : u8, 
     tima: u8,
     tma : u8,
@@ -172,6 +177,7 @@ impl Timer{
             div : 0,
             tima: 0,
             tma : 0,
+            div_sel: 0,
             start:false,
         }
     }
@@ -200,23 +206,23 @@ impl Timer{
     pub fn read_control(&self)->u8{
         self.div_sel | ((self.start as u8)<<2) 
     }
-    pub fn step(&mut self,clock :u32){
+    pub fn step(&mut self,clock :u32)->interrupt::Interrupt{
         if(clock & 63 == 0){
             self.div = self.div.wrapping_add(1);
         }
         if(self.start && 
            (clock & match self.div_sel {
-               0=> 255,1=>3,2=>15,3=>63,panic!()}) == 2){
+               0=> 255,1=>3,2=>15,3=>63,_=>panic!()}) == 2){
                let (r,o) = self.tima.overflowing_add(1);
                if o {
                    self.tima = self.tma;
                    interrupt::Interrupt::TimerOverflow
                }else{
                    self.tima = r;
-                   None
+                   interrupt::Interrupt::None
                }
            }else{
-               None
+               interrupt::Interrupt::None
            }
     }
 }

@@ -1,9 +1,17 @@
+extern crate ggez;
+use ggez::{graphics, Context, ContextBuilder, GameResult};
+use ggez::event::{self, EventHandler};
+
+use std::thread;
+use std::sync::mpsc;
+
 use std::io;
 use std::io::prelude::*;
 use std::fs::File;
 
 
 mod cpu;
+mod window;
 
 use cpu::*;
 
@@ -19,7 +27,7 @@ impl Gameboy{
             reg : cpu::registers::Registers::origin(),
             alu : cpu::alu::Alu::origin()
         };
-        r.reg.PC=0x100;
+       // r.reg.PC=0x100;
         r
     }
     fn main_loop(&mut self)
@@ -40,19 +48,38 @@ impl Gameboy{
                cpu_wait -= 1;
            }
            if clock > 100000000 {break}
+           if clock%0xffff == 0 {
+               //run at 64 hz
 
+           }
         }
+        println!("stopped at pc = {:04x}",self.reg.PC);
     }
 }
 fn main() -> io::Result<()>{
+    let (to_window, inbox_window) = mpsc::channel();
+    let (to_emulator, inbox_emulator) = mpsc::channel();
+
+    let (mut ctx, mut event_loop) = 
+        ContextBuilder::new("Rust Game Boy Emulator", "Awosomotter")
+		    .build()
+		    .expect("aieee, could not create ggez context!");
+
     let mut gb = Gameboy::Origin();
-
     let mut f = File::open("test.gb")?;
-
-    // read exactly 10 bytes
+    let mut window = window::Window::new(&mut ctx,inbox_window,to_emulator);
     f.read_exact(&mut gb.ram.rom)?;
     f.read_exact(&mut gb.ram.romswitch)?;
-    gb.main_loop();
+
+    thread::spawn(move|| {
+        gb.main_loop();
+
+    });
+        match event::run(&mut ctx, &mut event_loop, &mut window) {
+            Ok(_) => println!("Exited cleanly."),
+            Err(e) => println!("Error occured: {}", e)
+        }
+    // read exactly 10 bytes
     Ok(())
 
     

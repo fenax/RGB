@@ -2,6 +2,7 @@ mod cb;
 pub mod alu;
 pub mod ram;
 pub mod registers;
+pub mod interrupt;
 
 use self::cb::*;
 use self::alu::*;
