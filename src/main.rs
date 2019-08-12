@@ -1,5 +1,5 @@
 extern crate ggez;
-use ggez::{graphics, Context, ContextBuilder, GameResult};
+use ggez::{graphics, Context, ContextBuilder, GameResult, conf};
 use ggez::event::{self, EventHandler};
 
 use std::thread;
@@ -21,7 +21,7 @@ struct Gameboy{
     alu :cpu::alu::Alu,
 }
 impl Gameboy{
-    fn Origin() -> Gameboy{
+    fn origin() -> Gameboy{
         let mut r = Gameboy{
             ram : cpu::ram::Ram::origin(),
             reg : cpu::registers::Registers::origin(),
@@ -30,14 +30,13 @@ impl Gameboy{
        // r.reg.PC=0x100;
         r
     }
-    fn main_loop(&mut self)
+    fn main_loop(&mut self,rx:mpsc::Receiver<u8>,tx:mpsc::Sender<[u8;160*144]>)
     {
         let mut clock = 0 as u32;
         let mut cpu_wait = 0;
         loop {
-  //          clock += 1;
+           clock = clock.wrapping_add(1);
            if cpu_wait == 0{
-               clock += 1;
                cpu_wait =
                    instruct(&mut self.ram,
                             &mut self.reg,
@@ -47,6 +46,19 @@ impl Gameboy{
            }else{
                cpu_wait -= 1;
            }
+
+           //IO
+
+           ram::io::Joypad::step(&mut self.ram,clock);
+           ram::io::Serial::step(&mut self.ram,clock);
+           ram::io::Timer::step(&mut self.ram,clock);
+           ram::io::Dma::step(&mut self.ram, clock);
+            match ram::io::Video::step(&mut self.ram,clock) 
+            {
+                cpu::interrupt::Interrupt::VBlank => tx.send(self.ram.video.back_buffer).unwrap(),
+                _ => {},
+            };
+
            if clock > 100000000 {break}
            if clock%0xffff == 0 {
                //run at 64 hz
@@ -60,25 +72,29 @@ fn main() -> io::Result<()>{
     let (to_window, inbox_window) = mpsc::channel();
     let (to_emulator, inbox_emulator) = mpsc::channel();
 
-    let (mut ctx, mut event_loop) = 
+    let mut gb = Gameboy::origin();
+    let mut f = File::open("test.gb")?; 
+           let (mut ctx, mut event_loop) = 
         ContextBuilder::new("Rust Game Boy Emulator", "Awosomotter")
+            .window_mode(conf::WindowMode::default().dimensions(160.0,144.0))
 		    .build()
 		    .expect("aieee, could not create ggez context!");
 
-    let mut gb = Gameboy::Origin();
-    let mut f = File::open("test.gb")?;
     let mut window = window::Window::new(&mut ctx,inbox_window,to_emulator);
     f.read_exact(&mut gb.ram.rom)?;
     f.read_exact(&mut gb.ram.romswitch)?;
 
     thread::spawn(move|| {
-        gb.main_loop();
+        gb.main_loop(inbox_emulator,to_window);
 
     });
+
         match event::run(&mut ctx, &mut event_loop, &mut window) {
             Ok(_) => println!("Exited cleanly."),
             Err(e) => println!("Error occured: {}", e)
         }
+
+
     // read exactly 10 bytes
     Ok(())
 

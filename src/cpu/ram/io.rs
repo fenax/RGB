@@ -1,4 +1,32 @@
 use cpu::*;
+use cpu::ram::Ram;
+
+pub fn bit_split(var :  u8)->[bool;8]{
+    [
+        var & 1 != 0,
+        var & 2 != 0,
+        var & 4 != 0,
+        var & 8 != 0,
+        var & 16!= 0,
+        var & 32!= 0,
+        var & 64!= 0,
+        var &128!= 0,
+    ]
+}
+
+pub fn bit_merge(v0: bool, v1: bool, v2: bool, v3: bool,
+             v4: bool, v5: bool, v6: bool, v7: bool )->u8{
+    let mut r:u8 = 0;
+    if v0 {r+=1;}
+    if v1 {r+=2;}
+    if v2 {r+=4;}
+    if v3 {r+=8;}
+    if v4 {r+=16;}
+    if v5 {r+=32;}
+    if v6 {r+=64;}
+    if v7 {r+=128;}
+    r
+}
 
 pub struct Joypad{
     p14  : bool,
@@ -46,13 +74,15 @@ impl Joypad{
         // unsure, assuming out port is out only.
         let mut r = 0;
         
-        if(!self.p14){
+        if !self.p14
+        {
             r|= (self.right as u8) << 0;
             r|= (self.left  as u8) << 1;
             r|= (self.up    as u8) << 2;
             r|= (self.down  as u8) << 3;
         }
-        if(!self.p15){
+        if !self.p15
+        {
             r|= (self.a     as u8) << 0;
             r|= (self.b     as u8) << 1;
             r|= (self.select as u8)<< 2;
@@ -60,7 +90,7 @@ impl Joypad{
         }
         r
     }
-    pub fn step(&self,clock:u32)->interrupt::Interrupt{
+    pub fn step(ram: &mut Ram,clock:u32)->interrupt::Interrupt{
         interrupt::Interrupt::None
     }
 }
@@ -99,20 +129,23 @@ impl Serial{
         r |= (self.start as u8) << 7;
         r
     }
-    pub fn step(&mut self ,clock:u32)->interrupt::Interrupt{
-        if(self.started){
-            if(clock==self.stoptime){
-                self.start = false;
-                self.started=false;
-                self.data = 0xff;
+    pub fn step(ram: &mut Ram ,clock:u32)->interrupt::Interrupt{
+        if ram.serial.started
+        {
+            if clock==ram.serial.stoptime
+            {
+                ram.serial.start = false;
+                ram.serial.started=false;
+                ram.serial.data = 0xff;
                 interrupt::Interrupt::SerialTransfer
             }else{
                 interrupt::Interrupt::None
             }
         }else{
-            if (self.start){
-                self.started = true;
-                self.stoptime = clock + 1024;
+            if ram.serial.start
+            {
+                ram.serial.started = true;
+                ram.serial.stoptime = clock + 1024;
             } 
             interrupt::Interrupt::None
         }
@@ -122,41 +155,35 @@ impl Serial{
 
 pub struct Dma{
     pub address : u8,
-    pub todo : bool,
-    pub doing : bool,
-    stoptime : u32,
+    pub started : bool,
+    index : u8,
 }
 impl Dma{
     pub fn origin() -> Dma{
         Dma{
             address : 0,
-            todo : false,
-            doing : false,
-            stoptime: 0,
+            started : false,
+            index: 0,
         }
     }
     pub fn write(&mut self,v : u8){
         self.address = v ;
-        self.todo = true;
+        self.started = true;
+        self.index =0;
     }
     pub fn read(&self)->u8{
         self.address
     }
-    pub fn step(&mut self, clock:u32)->interrupt::Interrupt{
-        if(self.doing){
-            if(clock==self.stoptime){
-                self.todo = false;
-                self.doing = false;
-                interrupt::Interrupt::DoDmaTransfer
-            }else{ interrupt::Interrupt::None }
-        }else{
-            if self.todo {
-                self.doing = true;
-                self.stoptime = clock + 128;
+    pub fn step(ram: &mut Ram, clock:u32)->interrupt::Interrupt{
+        if ram.dma.started {
+            let tmp = ram.read8(ram.dma.index,ram.dma.address);
+            ram.write8(ram.dma.index, 0xfe, tmp);
+            ram.dma.index += 1;
+            if ram.dma.index>160 {
+                ram.dma.started = false;
             }
-            interrupt::Interrupt::None
         }
-        
+        interrupt::Interrupt::None
     }
 }
 
@@ -206,23 +233,388 @@ impl Timer{
     pub fn read_control(&self)->u8{
         self.div_sel | ((self.start as u8)<<2) 
     }
-    pub fn step(&mut self,clock :u32)->interrupt::Interrupt{
-        if(clock & 63 == 0){
-            self.div = self.div.wrapping_add(1);
+    pub fn step(ram: &mut Ram,clock :u32)->interrupt::Interrupt{
+        if clock & 63 == 0 
+        {
+            ram.timer.div = ram.timer.div.wrapping_add(1);
         }
-        if(self.start && 
-           (clock & match self.div_sel {
-               0=> 255,1=>3,2=>15,3=>63,_=>panic!()}) == 2){
-               let (r,o) = self.tima.overflowing_add(1);
-               if o {
-                   self.tima = self.tma;
-                   interrupt::Interrupt::TimerOverflow
-               }else{
-                   self.tima = r;
-                   interrupt::Interrupt::None
-               }
-           }else{
-               interrupt::Interrupt::None
-           }
+        if ram.timer.start && 
+           (clock & match ram.timer.div_sel {
+               0=> 255,1=>3,2=>15,3=>63,_=>panic!()}) == 2
+        {
+            let (r,o) = ram.timer.tima.overflowing_add(1);
+            if o {
+                ram.timer.tima = ram.timer.tma;
+                interrupt::Interrupt::TimerOverflow
+            }else{
+                ram.timer.tima = r;
+                interrupt::Interrupt::None
+            }
+        }else{
+            interrupt::Interrupt::None
+        }
+    }
+}
+
+pub struct Video{
+   // frame_clock:u32,
+    line_clock:u16,
+    line:u8,
+    window_line:u8,
+    pub back_buffer: [u8;144*160],
+
+
+    enable_lcd:bool,
+    window_tile_map:bool,   //(0=9800h-9BFFh, 1=9C00h-9FFFh)
+    enable_window:bool,
+    tile_set:bool,          //(0=8800h-97FFh, 1=8000h-8FFFh)
+    background_tile_map:bool,//(0=9800h-9BFFh, 1=9C00h-9FFFh)
+    sprite_size:bool,       // 0 small, 1 big
+    enable_sprites:bool,    
+    enable_background:bool, 
+
+    enable_ly_lcy_check:bool,
+    enable_mode_2_oam_check:bool,
+    enable_mode_1_vblank_check:bool,
+    enable_mode_0_hblank_check:bool,
+    signal_ly_lcy_comparison:bool,
+
+    line_compare:u8,
+
+    scroll_x:u8,
+    scroll_y:u8,
+
+    background_palette_bits:u8,
+    background_palette:[u8;4],
+    
+    sprite_palette_0_bits:u8,
+    sprite_palette_1_bits:u8,
+    sprite_palette_0:[u8;3],
+    sprite_palette_1:[u8;3],
+
+    window_scroll_x:u8,
+    window_scroll_y:u8,
+
+}
+
+impl Video{
+    pub fn origin()->Video{
+        Video{
+            back_buffer : [0;144*160],
+            line_clock : 0,
+            line : 0,
+            window_line:0,
+
+            enable_lcd : false,
+            window_tile_map : false,
+            enable_window : false,
+            tile_set : false,
+            background_tile_map : false,
+            sprite_size : false,
+            enable_sprites : false,
+            enable_background : false,
+            enable_ly_lcy_check : false,
+            enable_mode_0_hblank_check : false,
+            enable_mode_1_vblank_check : false,
+            enable_mode_2_oam_check : false,
+            signal_ly_lcy_comparison : false,
+            line_compare : 0,
+            scroll_x : 0,
+            scroll_y : 0,
+            background_palette_bits : 0,
+            background_palette : [0;4],
+
+            sprite_palette_0 : [0;3],
+            sprite_palette_1 : [0;3],
+            sprite_palette_0_bits :0,
+            sprite_palette_1_bits :0,
+
+            window_scroll_x :0,
+            window_scroll_y :0,
+        }
+    }
+
+    fn read_tile(ram:&mut Ram, tile:u8, subline:u16)->(u8,u8){
+        let bg_tile_data:u16 =
+            if ram.video.tile_set {
+                0x8000
+            }else{
+                0x9000
+            };
+        let tile_offset = 
+            if ram.video.tile_set {
+                bg_tile_data + tile as u16*16
+            }else{
+                bg_tile_data.wrapping_add(u8toi16(tile)*16)
+            } + subline*2;
+        let l = ram.read(tile_offset);
+        let h = ram.read(tile_offset+1);
+        (l,h)
+    }
+
+    fn draw_window(ram:&mut Ram){
+        if ram.video.enable_window == false 
+            || ram.video.window_scroll_x>=167
+            || ram.video.window_scroll_y>ram.video.line{
+            return
+        }
+        let tile_map:u16 = 
+            if ram.video.window_tile_map{
+                0x9C00
+            }else{
+                0x9800
+            };
+        let mut screen_x;
+        let mut window_x;
+            if ram.video.window_scroll_x<=7 {
+                screen_x = 0;
+                window_x = ram.video.window_scroll_x as usize;
+            }else{
+                screen_x = (ram.video.window_scroll_x-7) as usize;
+                window_x = 0;
+            } ;
+
+        let tile_line = ram.video.line/8;
+        let tile_sub_line = ram.video.line %8; 
+
+        'outer: loop{
+            let tile_column = window_x%8;
+            let mut tile_sub_column = window_x/8;
+            let map_offset:u16 = 
+                    tile_map +
+                        tile_line as u16 *32
+                        + tile_column as u16;
+            
+            let tile = ram.read(map_offset);
+            let (l,h) = Video::read_tile(ram, tile_line, tile_sub_line as u16);
+            'inner: loop{
+                let l_bit = (l>>(7-tile_sub_column)) & 1;
+                let h_bit = (h>>(7-tile_sub_column)) & 1;
+                let color = l_bit + h_bit * 2;
+                ram.video.back_buffer[
+                    ram.video.line as usize*160+x] = 
+                    ram.video.background_palette[color as usize];
+                screen_x+=1;
+                if screen_x >= 160 {
+                    break 'outer;
+                }
+                window_x += 1;
+                tile_sub_column += 1;
+                if tile_sub_column >= 8{
+                    break 'inner; 
+                }
+
+            }
+        }
+
+    }
+
+    fn draw_bg(ram:&mut Ram){
+        if ram.video.enable_background == false {
+            ram.video.back_buffer = [255;144*160];
+            return
+            }
+
+        let mut x :usize = 0;
+        //Draw time
+        let bg_tile_map:u16 = 
+            if ram.video.background_tile_map{
+                0x9C00
+            }else{
+                0x9800
+            };
+        let bg_line = (ram.video.line as u16 
+                    + ram.video.scroll_y as u16)%256;
+        let bg_tile_line = bg_line/8;
+        let bg_tile_sub_line = bg_line %8;
+        let mut bg_column = ram.video.scroll_x as u16;
+
+        'outer: loop {
+            let bg_tile_column = (bg_column%256)/8;
+            let mut bg_tile_sub_column = (bg_column%256)%8;
+            let bg_map_offset:u16 = 
+                    bg_tile_map
+                        + bg_tile_line*32
+                        + bg_tile_column;
+            let tile = ram.read(bg_map_offset);
+            let (l,h) = Video::read_tile(ram,tile,bg_tile_sub_line);
+
+            'inner: loop{
+                let l_bit = (l>>(7-bg_tile_sub_column)) & 1;
+                let h_bit = (h>>(7-bg_tile_sub_column)) & 1;
+                let color = l_bit + h_bit * 2;
+                // println!("line {} x {}",ram.video.line,x);
+                ram.video.back_buffer[
+                    ram.video.line as usize*160+x] = 
+                    ram.video.background_palette[color as usize];
+
+                x+=1;
+                if x >= 160 {
+                    break 'outer;
+                }
+                bg_column += 1;
+                bg_tile_sub_column += 1;
+                if bg_tile_sub_column >= 8{
+                    break 'inner; 
+                }
+            }
+        }          
+    }
+    
+
+    pub fn step(ram: &mut Ram,clock :u32)->interrupt::Interrupt{
+        if ram.video.enable_lcd
+        {
+            ram.video.line_clock += 1;
+            if ram.video.line_clock >= 114{
+                ram.video.line_clock = 0;
+                ram.video.line += 1;
+                if ram.video.line == 145
+                {
+                    return interrupt::Interrupt::VBlank
+                }
+                if ram.video.line >= 154
+                {//TODO shorter line 153
+                    ram.video.line = 0;
+                    ram.video.window_line = 0;
+                }
+            }else{
+                if ram.video.line_clock == 1 && ram.video.line < 144 {
+                    Video::draw_bg(ram);
+                    Video::draw_window(ram);
+                }
+            }
+            
+        }            
+        interrupt::Interrupt::None
+    }
+    pub fn write_control(&mut self, v : u8){
+        let v = bit_split(v);
+        self.enable_lcd = v[7];
+        self.window_tile_map = v[6];
+        self.enable_window = v[5];
+        self.tile_set = v[4];
+        self.background_tile_map= v[3];
+        self.sprite_size = v[2];
+        self.enable_sprites = v[1];
+        self.enable_background = v[0];
+    }
+
+    pub fn read_control(&self)->u8{ 
+        bit_merge(
+            self.enable_lcd,
+            self.window_tile_map,
+            self.enable_window,
+            self.tile_set,
+            self.background_tile_map,
+            self.sprite_size,
+            self.enable_sprites,
+            self.enable_background
+        )
+    } 
+
+    pub fn write_status(&mut self, v : u8){
+        let v = bit_split(v);
+        self.enable_ly_lcy_check = v[6];
+        self.enable_mode_2_oam_check = v[5];
+        self.enable_mode_1_vblank_check = v[4];
+        self.enable_mode_0_hblank_check = v[3];
+        self.signal_ly_lcy_comparison = v[2];
+    }
+
+    pub fn read_status(&self)->u8{
+        bit_merge(
+            true,
+            self.enable_ly_lcy_check,
+            self.enable_mode_2_oam_check,
+            self.enable_mode_1_vblank_check,
+            self.enable_mode_0_hblank_check,
+            self.signal_ly_lcy_comparison,
+            false,
+            false
+        ) + if self.line >= 144 {
+            1
+        }else{
+            match self.line_clock{
+                1 ... 20 => 2,
+                21 ... 63 => 3,
+                _ => 0,
+            }
+        }
+    }
+
+    pub fn write_scroll_y(&mut self,v:u8){
+        self.scroll_y = v;
+    }
+
+    pub fn read_scroll_y(&self)->u8{
+        self.scroll_y
+    }
+
+    pub fn write_scroll_x(&mut self,v:u8){
+        self.scroll_x = v;
+    }
+
+    pub fn read_scroll_x(&self)->u8{
+        self.scroll_x
+    }
+
+    pub fn write_window_scroll_y(&mut self,v:u8){
+        self.window_scroll_y = v;
+    }
+
+    pub fn read_window_scroll_y(&self)->u8{
+        self.window_scroll_y
+    }
+
+    pub fn write_window_scroll_x(&mut self,v:u8){
+        self.window_scroll_x = v;
+    }
+
+    pub fn read_window_scroll_x(&self)->u8{
+        self.window_scroll_x
+    }
+
+    pub fn read_line(&self)->u8{
+        self.line
+    }
+    pub fn read_line_compare(&self)->u8{
+        self.line_compare
+    }
+    pub fn write_line_compare(&mut self, v:u8){
+        self.line_compare = v;
+    }
+
+    pub fn read_background_palette(&self)->u8{
+        self.background_palette_bits
+    }
+    pub fn write_background_palette(&mut self, v:u8){
+        //let base = [0,75,140,255];
+        let base = [255,140,75,0];
+        self.background_palette_bits = v;
+        self.background_palette[0] = base[(v&3) as usize];
+        self.background_palette[1] = base[((v>>2)&3) as usize];
+        self.background_palette[2] = base[((v>>4)&3) as usize];
+        self.background_palette[3] = base[((v>>6)&3) as usize];
+    }
+    pub fn read_sprite_palette_0(&self)->u8{
+        self.sprite_palette_0_bits
+    }
+    pub fn write_sprite_palette_0(&mut self, v:u8){
+        let base = [255,140,75,0];
+        self.sprite_palette_0_bits = v;
+        self.sprite_palette_0[0] = base[((v>>2)&3) as usize];
+        self.sprite_palette_0[1] = base[((v>>4)&3) as usize];
+        self.sprite_palette_0[2] = base[((v>>6)&3) as usize];
+    } 
+    pub fn read_sprite_palette_1(&self)->u8{
+        self.sprite_palette_1_bits
+    }
+    pub fn write_sprite_palette_1(&mut self, v:u8){
+        let base = [255,140,75,0];
+        self.sprite_palette_1_bits = v;
+        self.sprite_palette_1[0] = base[((v>>2)&3) as usize];
+        self.sprite_palette_1[1] = base[((v>>4)&3) as usize];
+        self.sprite_palette_1[2] = base[((v>>6)&3) as usize];
     }
 }

@@ -1,4 +1,4 @@
-mod io;
+pub mod io;
 use cpu::*;
 
 
@@ -41,6 +41,7 @@ pub struct Ram{
     serial:io::Serial,
     dma:io::Dma,
     timer:io::Timer,
+    pub video:io::Video,
 
     pub ram:[u8;0x2000],
     pub rom:[u8;0x4000],
@@ -60,6 +61,7 @@ impl Ram{
             serial : io::Serial::origin(),
             dma    : io::Dma::origin(),
             timer  : io::Timer::origin(),
+            video  : io::Video::origin(),
 
             ram:[0;0x2000],
             rom:[0;0x4000],
@@ -103,8 +105,24 @@ impl Ram{
             0x00 => self.joypad.read(),
             0x01 => self.serial.read_data(),
             0x02 => self.serial.read_control(),
+            0x04 => self.timer.read_div(),
+            0x05 => self.timer.read_tima(),
+            0x06 => self.timer.read_tma(),
+            0x07 => self.timer.read_control(),
+
+            0x40 => self.video.read_control(),
+            0x41 => self.video.read_status(),
+            0x42 => self.video.read_scroll_y(),
+            0x43 => self.video.read_scroll_x(),
+            0x44 => self.video.read_line(),
+            0x45 => self.video.read_line_compare(),
+            0x47 => self.video.read_background_palette(),
+            0x48 => self.video.read_sprite_palette_0(),
+            0x49 => self.video.read_sprite_palette_1(),
+            0x4a => self.video.read_window_scroll_y(),
+            0x4b => self.video.read_window_scroll_x(),
             _ =>{
-     //           println!("reading from unimplemented io {:02x}",a);
+                println!("reading from unimplemented io {:02x}",a);
                 0
             }
         }
@@ -114,7 +132,24 @@ impl Ram{
             0x00 => self.joypad.write(v),
             0x01 => self.serial.write_data(v),
             0x02 => self.serial.write_control(v),
-            _ => println!("writing to unimplemented io {:02x}",a)
+            0x04 => self.timer.write_div(v),
+            0x05 => self.timer.write_tima(v),
+            0x06 => self.timer.write_tma(v),
+            0x07 => self.timer.write_control(v),
+
+            0x40 => self.video.write_control(v),
+            0x41 => self.video.write_status(v),
+            0x42 => self.video.write_scroll_y(v),
+            0x43 => self.video.write_scroll_x(v),
+            // can not write to 0x44
+            0x45 => self.video.write_line_compare(v),
+            0x47 => self.video.write_background_palette(v),
+            0x48 => self.video.write_sprite_palette_0(v),
+            0x49 => self.video.write_sprite_palette_1(v),
+            0x4a => self.video.write_window_scroll_y(v),
+            0x4b => self.video.write_window_scroll_x(v),
+
+            _ => println!("writing {:02x} to unimplemented io {:02x}",v,a)
         }
     }
     pub fn read(&self,a:u16)->u8{
@@ -148,7 +183,9 @@ impl Ram{
             0xff80 ... 0xfffe => //HIGH RAM
                 self.hram[(a-0xff80) as usize],
             0xffff => // Interupt
-                self.ir,
+            { 
+                self.ir
+            },
             0xfea0 ... 0xfeff | 0xff4c ... 0xff7f
                 => // empty, no IO
                 {
@@ -181,7 +218,10 @@ impl Ram{
             0xff80 ... 0xfffe => //HIGH RAM
                 self.hram[(a-0xff80) as usize] = v,
             0xffff => // Interupt
-                self.ir = v,
+            {   
+                println!("write {} to IR", v ); 
+                self.ir = v;
+            },
             0xff50 => // boot end
             {
                 self.booting = false;
