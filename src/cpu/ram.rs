@@ -37,6 +37,7 @@ pub static DMG : [u8;0x100] =
   0xFB, 0x86, 0x20, 0xFE,  0x3E, 0x01, 0xE0, 0x50];
 
 pub struct Ram{
+    pub interrupt:io::InterruptManager,
     joypad:io::Joypad,
     serial:io::Serial,
     dma:io::Dma,
@@ -46,17 +47,18 @@ pub struct Ram{
     pub ram:[u8;0x2000],
     pub rom:[u8;0x4000],
     pub romswitch:[u8;0x4000],
-    vram:[u8;0x2000],
+    pub ramswitch:[u8;0x2000],
+    pub vram:[u8;0x2000],
     hram:[u8;0x7f],
     oam:[u8;0xa0],
-    ir:u8,
-    touch_io:bool,
     booting:bool,
 }
 
 impl Ram{
     pub fn origin() -> Ram{
         Ram{
+            interrupt : io::InterruptManager::origin(),
+
             joypad : io::Joypad::origin(),
             serial : io::Serial::origin(),
             dma    : io::Dma::origin(),
@@ -66,11 +68,10 @@ impl Ram{
             ram:[0;0x2000],
             rom:[0;0x4000],
             romswitch:[0;0x4000],
+            ramswitch:[0;0x2000],
             vram:[0;0x2000],
             hram:[0;0x7f],
             oam:[0;0xa0],
-            ir:0,
-            touch_io:false,
             booting:true,
         }
     }
@@ -110,12 +111,15 @@ impl Ram{
             0x06 => self.timer.read_tma(),
             0x07 => self.timer.read_control(),
 
+            0x0f => self.interrupt.read_interrupt_request(),
+
             0x40 => self.video.read_control(),
             0x41 => self.video.read_status(),
             0x42 => self.video.read_scroll_y(),
             0x43 => self.video.read_scroll_x(),
             0x44 => self.video.read_line(),
             0x45 => self.video.read_line_compare(),
+            0x46 => self.dma.read(),
             0x47 => self.video.read_background_palette(),
             0x48 => self.video.read_sprite_palette_0(),
             0x49 => self.video.read_sprite_palette_1(),
@@ -137,12 +141,15 @@ impl Ram{
             0x06 => self.timer.write_tma(v),
             0x07 => self.timer.write_control(v),
 
+            0x0f => self.interrupt.write_interrupt_request(v),
+
             0x40 => self.video.write_control(v),
             0x41 => self.video.write_status(v),
             0x42 => self.video.write_scroll_y(v),
             0x43 => self.video.write_scroll_x(v),
             // can not write to 0x44
             0x45 => self.video.write_line_compare(v),
+            0x46 => self.dma.write(v),
             0x47 => self.video.write_background_palette(v),
             0x48 => self.video.write_sprite_palette_0(v),
             0x49 => self.video.write_sprite_palette_1(v),
@@ -169,11 +176,12 @@ impl Ram{
             0x8000 ... 0x9fff => //VRAM
                 self.vram[(a%0x2000) as usize],
             0xa000 ... 0xbfff => //RAM SWITCH
-                panic!("access to unimplemented ram"),
+                self.ramswitch[(a%0x2000) as usize],
+            //    panic!("access to unimplemented ram"),
             0xc000 ... 0xdfff => //RAM INTERN
-                self.ram[(a%0x2000) as usize],
+                self.ram[(a - 0xc000) as usize],
             0xe000 ... 0xfdff => //RAM INTERN EC
-                self.ram[(a%0x2000) as usize],
+                self.ram[(a - 0xe000) as usize],
             0xfe00 ... 0xfe9f => //OAM
                 self.oam[(a-0xfe00) as usize],
             0xff00 ... 0xff4b => //IO
@@ -184,7 +192,7 @@ impl Ram{
                 self.hram[(a-0xff80) as usize],
             0xffff => // Interupt
             { 
-                self.ir
+                self.interrupt.read_interrupt_enable()
             },
             0xfea0 ... 0xfeff | 0xff4c ... 0xff7f
                 => // empty, no IO
@@ -197,14 +205,30 @@ impl Ram{
     
     pub fn write(&mut self,a:u16,v:u8){
         match a {
-            0x0000 ... 0x3fff => //ROM #0
-                self.rom[(a%0x4000) as usize] = v,
-            0x4000 ... 0x7fff => //ROM SWITCH
-                self.romswitch[(a-0x4000) as usize] = v,
+            0x0000 ... 0x1fff => //ram enable
+            {
+                println!("ram enable {:04x} {:02x}",a,v);
+            },
+            0x2000 ... 0x3fff => //rom bank number
+            {
+                if v == 1{
+                    println!("switching to rom bank 1");
+                }else{
+                    panic!("rom switch {:04x} {:02x}",a,v);
+                }
+            },
+            0x4000 ... 0x5fff => // ram bank number (or upper bit of rom bank)
+            {},
+            0x6000 ... 0x7fff => // rom/ram bank mode
+            {},
             0x8000 ... 0x9fff => //VRAM
-                self.vram[(a%0x2000) as usize] = v,
+            {
+                println!("write to vram ({:04x}) = {:02x}",a,v);
+                self.vram[(a%0x2000) as usize] = v; 
+            },
             0xa000 ... 0xbfff => //RAM SWITCH
-                panic!("access to unimplemented ram"),
+                self.ramswitch[(a%0x2000) as usize] = v,
+//                panic!("access to unimplemented ram"),
             0xc000 ... 0xdfff => //RAM INTERN
                 self.ram[(a%0x2000) as usize] = v,
             0xe000 ... 0xfdff => //RAM INTERN EC
@@ -220,7 +244,7 @@ impl Ram{
             0xffff => // Interupt
             {   
                 println!("write {} to IR", v ); 
-                self.ir = v;
+                self.interrupt.write_interrupt_enable(v);
             },
             0xff50 => // boot end
             {

@@ -30,7 +30,10 @@ impl Gameboy{
        // r.reg.PC=0x100;
         r
     }
-    fn main_loop(&mut self,rx:mpsc::Receiver<u8>,tx:mpsc::Sender<[u8;160*144]>)
+
+    
+    fn main_loop(&mut self, rx:mpsc::Receiver<u8>,
+                            tx:mpsc::Sender<([u8;160*144],Vec<u8>,Vec<u8>,Vec<u8>)>)
     {
         let mut clock = 0 as u32;
         let mut cpu_wait = 0;
@@ -42,20 +45,43 @@ impl Gameboy{
                             &mut self.reg,
                             &mut self.alu)
                    .unwrap_or(0);
-      //         println!("{}{}",self.alu,self.reg);
+               print!("\n{}{}",self.alu,self.reg);
+              cpu::ram::io::InterruptManager::try_interrupt(&mut self.ram, &mut self.reg);
+
            }else{
                cpu_wait -= 1;
            }
 
            //IO
+           let i_joypad = ram::io::Joypad::step(&mut self.ram,clock);
+           let i_serial = ram::io::Serial::step(&mut self.ram,clock);
+           let i_timer  = ram::io::Timer::step(&mut self.ram,clock);
+           let i_dma    = ram::io::Dma::step(&mut self.ram, clock);
+           let i_video = ram::io::Video::step(&mut self.ram,clock);
+           ram::io::InterruptManager::step(&mut self.ram,clock);
 
-           ram::io::Joypad::step(&mut self.ram,clock);
-           ram::io::Serial::step(&mut self.ram,clock);
-           ram::io::Timer::step(&mut self.ram,clock);
-           ram::io::Dma::step(&mut self.ram, clock);
-            match ram::io::Video::step(&mut self.ram,clock) 
+
+           self.ram.interrupt.add_interrupt(&i_joypad);
+           self.ram.interrupt.add_interrupt(&i_serial);
+           self.ram.interrupt.add_interrupt(&i_timer);
+           self.ram.interrupt.add_interrupt(&i_dma);
+           self.ram.interrupt.add_interrupt(&i_video);
+
+            match i_video
             {
-                cpu::interrupt::Interrupt::VBlank => tx.send(self.ram.video.back_buffer).unwrap(),
+                cpu::ram::io::Interrupt::VBlank =>{
+                    println!("got VBLANK");
+                    let mut set = Vec::new();
+                    let mut w0 = Vec::new();
+                    let mut w1 = Vec::new();
+
+                    set.extend_from_slice(&self.ram.vram[0..=0x17ff]);
+                    w0.extend_from_slice(&self.ram.vram[0x1800..=0x1bff]);
+                    w1.extend_from_slice(&self.ram.vram[0x1c00..=0x1fff]);
+
+                    tx.send((self.ram.video.back_buffer,w0, w1, set)).unwrap();
+                    
+                } ,
                 _ => {},
             };
 
@@ -76,7 +102,7 @@ fn main() -> io::Result<()>{
     let mut f = File::open("test.gb")?; 
            let (mut ctx, mut event_loop) = 
         ContextBuilder::new("Rust Game Boy Emulator", "Awosomotter")
-            .window_mode(conf::WindowMode::default().dimensions(160.0,144.0))
+            .window_mode(conf::WindowMode::default().dimensions(512.0,512.0))
 		    .build()
 		    .expect("aieee, could not create ggez context!");
 

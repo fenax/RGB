@@ -2,7 +2,6 @@ mod cb;
 pub mod alu;
 pub mod ram;
 pub mod registers;
-pub mod interrupt;
 
 use self::cb::*;
 use self::alu::*;
@@ -27,8 +26,7 @@ pub fn instruct(ram : &mut Ram, reg : &mut Registers, alu: &mut Alu)
 ->Option<u8>{
     fn read_op(ram:&mut Ram, reg:&mut Registers) -> u8{
         let r = ram.read(reg.PC);
-  /*      println!("Read {:02x} at {:02x}",
-                 r,reg.PC);*/
+        print!("{:02x} ",r);
         reg.PC += 1;
         r
     }
@@ -545,8 +543,8 @@ pub fn instruct(ram : &mut Ram, reg : &mut Registers, alu: &mut Alu)
         0x19 => alu.add16(&mut reg.L,&mut reg.H,u8tou16(reg.E,reg.D)),
         //ADD HL,HL
         0x29 => {
-            let HL = u8tou16(reg.L,reg.H);
-            alu.add16(&mut reg.L,&mut reg.H,HL)
+            let hl = u8tou16(reg.L,reg.H);
+            alu.add16(&mut reg.L,&mut reg.H,hl)
         },
         //ADD HL,SP
         0x39 => alu.add16(&mut reg.L,&mut reg.H,reg.SP),
@@ -635,7 +633,7 @@ pub fn instruct(ram : &mut Ram, reg : &mut Registers, alu: &mut Alu)
         //ADD SP,r8
         0xe8 => {
             let b = read_op(ram,reg);
-            let bb = b as u16 + if (b&0x80 != 0){0xff00}else{0};
+            let bb = b as u16 + if b&0x80 != 0{0xff00}else{0};
             reg.SP = alu.add16_(reg.SP,bb);
             Some(3)
         },
@@ -652,7 +650,7 @@ pub fn instruct(ram : &mut Ram, reg : &mut Registers, alu: &mut Alu)
         //RRCA
         0x0f => {
             let c = (reg.A & 1 ) !=0;
-            reg.A = (reg.A >> 1) + if(c){0x80}else{0};
+            reg.A = (reg.A >> 1) + if c{0x80}else{0};
             alu.Fcarry = c;
             alu.Fzero = reg.A == 0;
             None
@@ -669,17 +667,17 @@ pub fn instruct(ram : &mut Ram, reg : &mut Registers, alu: &mut Alu)
         //RRA
         0x1f => {
             let c = (reg.A & 1 ) !=0;
-            reg.A = (reg.A >> 1) + if(alu.Fcarry){0x80}else{0};
+            reg.A = (reg.A >> 1) + if alu.Fcarry {0x80}else{0};
             alu.Fcarry = c;
             alu.Fzero = reg.A == 0;
             None
         },
         //DDA
         0x27 => {
-            if (alu.Fhalf || (reg.A & 0x0f) > 9){
+            if alu.Fhalf || (reg.A & 0x0f) > 9{
                 reg.A += 6;
             }
-            if (alu.Fcarry || (reg.A >> 4) >9){
+            if alu.Fcarry || (reg.A >> 4) >9{
                 reg.A += 0x60; 
                 alu.Fcarry = true;
             }
@@ -813,7 +811,7 @@ pub fn instruct(ram : &mut Ram, reg : &mut Registers, alu: &mut Alu)
         //LD HL,SP+r8
         0xf8 => {
             let b = read_op(ram,reg);
-            let bb = b as u16 + if (b&0x80 != 0){0xff00}else{0};
+            let bb = b as u16 + if b&0x80 != 0{0xff00}else{0};
             let r = alu.add16_(reg.SP,bb);
             reg.L = ram.read(r);
             reg.H = ram.read(r+1);
@@ -842,7 +840,7 @@ pub fn instruct(ram : &mut Ram, reg : &mut Registers, alu: &mut Alu)
         //POP DE
         0xd1 =>{
             reg.E = ram.read(reg.SP);
-            reg.B = ram.read(reg.SP+1);
+            reg.D = ram.read(reg.SP+1);
             reg.SP += 2;
             Some(3)
         },
@@ -899,7 +897,7 @@ pub fn instruct(ram : &mut Ram, reg : &mut Registers, alu: &mut Alu)
         //JR NZ,r8
         0x20 => {
             let arg1 = u8toi16(read_op(ram,reg));
-            if(!alu.Fzero) {
+            if !alu.Fzero {
                 reg.PC =
                     reg.PC.wrapping_add(arg1);
             }
@@ -908,7 +906,7 @@ pub fn instruct(ram : &mut Ram, reg : &mut Registers, alu: &mut Alu)
         //JR Z,r8
         0x28 =>{
             let arg1 = u8toi16(read_op(ram,reg));
-            if(alu.Fzero) {
+            if alu.Fzero {
                 reg.PC =
                     reg.PC.wrapping_add(arg1);
             }
@@ -917,7 +915,7 @@ pub fn instruct(ram : &mut Ram, reg : &mut Registers, alu: &mut Alu)
         //JR NC,r8
         0x30 => {
             let arg1 = u8toi16(read_op(ram,reg));
-            if(!alu.Fcarry){
+            if !alu.Fcarry{
                 reg.PC =
                     reg.PC.wrapping_add(arg1);
             }
@@ -926,7 +924,7 @@ pub fn instruct(ram : &mut Ram, reg : &mut Registers, alu: &mut Alu)
         //JR C,r8
         0x38 => {
             let arg1 = u8toi16(read_op(ram,reg));
-            if(alu.Fcarry){
+            if alu.Fcarry {
                 reg.PC =
                     reg.PC.wrapping_add(arg1);
             }
@@ -937,7 +935,7 @@ pub fn instruct(ram : &mut Ram, reg : &mut Registers, alu: &mut Alu)
         0xc2 => {
             let arg1 = read_op(ram,reg);
             let arg2 = read_op(ram,reg);
-            if(!alu.Fzero){
+            if !alu.Fzero{
                 reg.PC = u8tou16(arg1,arg2);
             }
             Some(3)
@@ -953,7 +951,7 @@ pub fn instruct(ram : &mut Ram, reg : &mut Registers, alu: &mut Alu)
         0xca => {
             let arg1 = read_op(ram,reg);
             let arg2 = read_op(ram,reg);
-            if(alu.Fzero){
+            if alu.Fzero{
                 reg.PC = u8tou16(arg1,arg2);
             }
             Some(3)
@@ -962,7 +960,7 @@ pub fn instruct(ram : &mut Ram, reg : &mut Registers, alu: &mut Alu)
         0xd2 => {
             let arg1 = read_op(ram,reg);
             let arg2 = read_op(ram,reg);
-            if(!alu.Fcarry){
+            if !alu.Fcarry {
                 reg.PC = u8tou16(arg1,arg2);
             }
             Some(3)
@@ -971,7 +969,7 @@ pub fn instruct(ram : &mut Ram, reg : &mut Registers, alu: &mut Alu)
         0xda => {
             let arg1 = read_op(ram,reg);
             let arg2 = read_op(ram,reg);
-            if(alu.Fcarry){
+            if alu.Fcarry {
                 reg.PC = u8tou16(arg1,arg2);
             }
             Some(3)
@@ -986,7 +984,7 @@ pub fn instruct(ram : &mut Ram, reg : &mut Registers, alu: &mut Alu)
         0xc4 => {
             let arg1 = read_op(ram,reg);
             let arg2 = read_op(ram,reg);
-            if(!alu.Fzero){
+            if !alu.Fzero {
                 ram.push16(&mut reg.SP, reg.PC);
                 reg.PC = u8tou16(arg1, arg2);
             }
@@ -996,7 +994,7 @@ pub fn instruct(ram : &mut Ram, reg : &mut Registers, alu: &mut Alu)
         0xcc =>{
             let arg1 = read_op(ram,reg);
             let arg2 = read_op(ram,reg);
-            if(alu.Fzero){
+            if alu.Fzero {
                 ram.push16(&mut reg.SP, reg.PC);
                 reg.PC = u8tou16(arg1, arg2);
             }
@@ -1006,7 +1004,7 @@ pub fn instruct(ram : &mut Ram, reg : &mut Registers, alu: &mut Alu)
         0xcd =>{
             let arg1 = read_op(ram,reg);
             let arg2 = read_op(ram,reg);
-            let (pcl,pch) = u16tou8(reg.PC);
+            //let (pcl,pch) = u16tou8(reg.PC);
             ram.push16(&mut reg.SP, reg.PC);
             reg.PC = u8tou16(arg1, arg2);
             Some(3)
@@ -1015,7 +1013,7 @@ pub fn instruct(ram : &mut Ram, reg : &mut Registers, alu: &mut Alu)
         0xd4 =>{
             let arg1 = read_op(ram,reg);
             let arg2 = read_op(ram,reg);
-            if(!alu.Fcarry){
+            if !alu.Fcarry{
                 ram.push16(&mut reg.SP, reg.PC);
                 reg.PC = u8tou16(arg1, arg2);
             }
@@ -1025,7 +1023,7 @@ pub fn instruct(ram : &mut Ram, reg : &mut Registers, alu: &mut Alu)
         0xdc =>{
             let arg1 = read_op(ram,reg);
             let arg2 = read_op(ram,reg);
-            if(alu.Fcarry){
+            if alu.Fcarry{
                 ram.push16(&mut reg.SP, reg.PC);
                 reg.PC = u8tou16(arg1, arg2);
             }
@@ -1083,14 +1081,14 @@ pub fn instruct(ram : &mut Ram, reg : &mut Registers, alu: &mut Alu)
 
         //RET NZ
         0xc0 => {
-            if(!alu.Fzero){
+            if !alu.Fzero{
                 reg.PC = ram.pop16(&mut reg.SP);
             }
             Some(1)
         },
         //RET Z
         0xc8 => {
-            if(alu.Fzero){ 
+            if alu.Fzero{ 
                 reg.PC = ram.pop16(&mut reg.SP);
             }
             Some(1)
@@ -1102,14 +1100,14 @@ pub fn instruct(ram : &mut Ram, reg : &mut Registers, alu: &mut Alu)
         },
         //RET NC
         0xd0 => {
-            if(!alu.Fcarry){
+            if !alu.Fcarry{
                 reg.PC = ram.pop16(&mut reg.SP);
             }
             Some(1)
         },
         //RET C
         0xd8 => {
-            if(alu.Fcarry){
+            if alu.Fcarry{
                 reg.PC = ram.pop16(&mut reg.SP);
             }
             Some(1)
@@ -1117,19 +1115,35 @@ pub fn instruct(ram : &mut Ram, reg : &mut Registers, alu: &mut Alu)
         //RETI
         0xd9 => {
             reg.PC = ram.pop16(&mut reg.SP);
-            //TODO implement interrupts.
+            ram.interrupt.master_enable = true;
+            println!("RETI PC{:x} SP{:x}",reg.PC,reg.SP);
+            //TODO should interrupt be enabled directly or like DI and EI ?
             Some(1)
         },
 
         //DI
-        0xf3 => None,
+        0xf3 => {
+            ram.interrupt.order_disable = false;
+            println!("DI");
+            None
+        },
         //EI
-        0xfb => None,
+        0xfb => {
+            ram.interrupt.order_enable = true;
+            println!("EI");
+            None
+        },
 
         //STOP
-        0x10 => None,
+        0x10 => {
+            println!("run unimplémented STOP");
+            None
+        },
         //HALT
-        0x76 => None,
+        0x76 => {
+            println!("run unimplémented HALT");
+            None
+        },
 
 
         //PREFIX CB

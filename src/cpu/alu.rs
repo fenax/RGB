@@ -31,10 +31,10 @@ impl Alu{
     }
     pub fn get_f(&self)->u8{
         let mut r = 0 as u8;
-        if(self.Fzero) {r+= 1<<7};
-        if(self.Fsub)  {r+= 1<<6};
-        if(self.Fhalf) {r+= 1<<5};
-        if(self.Fcarry){r+= 1<<4};
+        if self.Fzero {r+= 1<<7};
+        if self.Fsub  {r+= 1<<6};
+        if self.Fhalf {r+= 1<<5};
+        if self.Fcarry{r+= 1<<4};
         r
     }
     pub fn set_f(&mut self, f: u8){
@@ -72,14 +72,14 @@ impl Alu{
         Some(1)
     }
     pub fn add16_(&mut self,a: u16, b: u16)->u16{
-        self.Fhalf = (((a&0xfff) + (b&0xfff))>0xfff);
+        self.Fhalf = ((a&0xfff) + (b&0xfff))>0xfff;
         self.Fsub = false;
         let (r,c) = a.overflowing_add(b);
         self.Fcarry = c;
         r
     }
     pub fn add(&mut self,a:&mut u8,b:u8)->Option<u8>{
-        self.Fhalf = (((*a&0xf) + (b&0xf))>0xf);
+        self.Fhalf = ((*a&0xf) + (b&0xf))>0xf;
         self.Fsub = false;
         let (r,c) = a.overflowing_add(b);
         self.Fzero = r==0;

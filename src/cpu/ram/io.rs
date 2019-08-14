@@ -27,7 +27,142 @@ pub fn bit_merge(v0: bool, v1: bool, v2: bool, v3: bool,
     if v7 {r+=128;}
     r
 }
+pub enum Interrupt{
+    None,
+    VBlank,
+    LcdcStatus,
+    TimerOverflow,
+    SerialTransfer,
+    Joypad,
+}
 
+pub struct InterruptManager{
+    pub master_enable:bool,
+    pub order_enable:bool,
+    pub order_disable:bool,
+
+    enable_vblank:bool,
+    enable_lcd_stat:bool,
+    enable_timer:bool,
+    enable_serial:bool,
+    enable_joypad:bool,
+
+    request_vblank:bool,
+    request_lcd_stat:bool,
+    request_timer:bool,
+    request_serial:bool,
+    request_joypad:bool,
+} 
+
+impl InterruptManager{
+    pub fn origin()->InterruptManager{
+        InterruptManager{
+            master_enable : false,
+            order_disable : false,
+            order_enable  : false,
+
+            enable_vblank : false,
+            enable_lcd_stat : false,
+            enable_timer : false,
+            enable_serial : false,
+            enable_joypad : false,
+
+            request_vblank :false,
+            request_lcd_stat :false,
+            request_timer : false,
+            request_serial: false,
+            request_joypad: false,
+        }
+    }
+
+    pub fn step(ram : &mut ram::Ram,clock: u32)->Interrupt{
+        if ram.interrupt.order_disable{
+            ram.interrupt.order_disable = false;
+            ram.interrupt.master_enable = false;
+        }
+        if ram.interrupt.order_enable{
+            ram.interrupt.order_enable = false;
+            ram.interrupt.master_enable = true;
+        }
+        Interrupt::None
+    }
+
+    pub fn add_interrupt(&mut self,i:&Interrupt){
+        match i {
+            Interrupt::VBlank => self.request_vblank = true,
+            Interrupt::LcdcStatus => self.request_lcd_stat = true,
+            Interrupt::TimerOverflow => self.request_timer = true,
+            Interrupt::SerialTransfer => self.request_serial = true,
+            Interrupt::Joypad => self.request_joypad = true,
+            Interrupt::None => {},
+        }
+    }
+
+    pub fn try_interrupt(ram : &mut ram::Ram,
+                         reg : &mut registers::Registers){
+        if ram.interrupt.master_enable{
+            if ram.interrupt.enable_vblank && ram.interrupt.request_vblank{
+                println!("running Vblank PC{:x} SP{:x}",reg.PC,reg.SP);
+                ram.interrupt.master_enable = false;
+                ram.interrupt.request_vblank = false;
+                ram.push16(&mut reg.SP,reg.PC);
+                reg.PC = 0x40;
+            }else if ram.interrupt.enable_lcd_stat && ram.interrupt.request_lcd_stat{
+                println!("running lcd_stat" );
+                ram.interrupt.master_enable = false;
+                ram.interrupt.request_lcd_stat = false;
+                ram.push16(&mut reg.SP,reg.PC);
+                reg.PC = 0x48;
+            }else if ram.interrupt.enable_timer && ram.interrupt.request_timer{
+                println!("running timer" );
+                ram.interrupt.master_enable = false;
+                ram.interrupt.request_timer = false;
+                ram.push16(&mut reg.SP,reg.PC);
+                reg.PC = 0x50;
+            }else if ram.interrupt.enable_serial && ram.interrupt.request_serial{
+                println!("running serial" );
+                ram.interrupt.master_enable = false;
+                ram.interrupt.request_serial = false;
+                ram.push16(&mut reg.SP,reg.PC);
+                reg.PC = 0x58;
+            }else if ram.interrupt.enable_joypad && ram.interrupt.request_joypad{
+                println!("running joypad" );
+                ram.interrupt.master_enable = false;
+                ram.interrupt.request_joypad = false;
+                ram.push16(&mut reg.SP,reg.PC);
+                reg.PC = 0x60;
+            }
+        }
+    }
+
+    pub fn read_interrupt_enable(&self)->u8{
+        bit_merge(self.enable_vblank,self.enable_lcd_stat,self.enable_timer,
+                    self.enable_serial, self.enable_joypad,
+                    false,false,false)
+    }
+    pub fn read_interrupt_request(&self)->u8{
+        bit_merge(self.request_vblank,self.request_lcd_stat,
+                    self.request_timer,self.request_serial,
+                    self.request_joypad,false,false,false)
+    }
+    pub fn write_interrupt_enable(&mut self, v:u8){
+        let b = bit_split(v);
+        self.enable_vblank = b[0];
+        self.enable_lcd_stat = b[1];
+        self.enable_timer = b[2];
+        self.enable_serial = b[3];
+        self.enable_joypad = b[4];
+    }
+    pub fn write_interrupt_request(&mut self, v:u8){
+        println!("write interrupt request {:02x}",v);
+        let b = bit_split(v);
+        self.request_vblank = b[0];
+        self.request_lcd_stat = b[1];
+        self.request_timer = b[2];
+        self.request_serial = b[3];
+        self.request_joypad = b[4];
+    }
+}
 pub struct Joypad{
     p14  : bool,
     p15  : bool,
@@ -76,22 +211,22 @@ impl Joypad{
         
         if !self.p14
         {
-            r|= (self.right as u8) << 0;
-            r|= (self.left  as u8) << 1;
-            r|= (self.up    as u8) << 2;
-            r|= (self.down  as u8) << 3;
+            r|= (!self.right as u8) << 0;
+            r|= (!self.left  as u8) << 1;
+            r|= (!self.up    as u8) << 2;
+            r|= (!self.down  as u8) << 3;
         }
         if !self.p15
         {
-            r|= (self.a     as u8) << 0;
-            r|= (self.b     as u8) << 1;
-            r|= (self.select as u8)<< 2;
-            r|= (self.start as u8) << 3;
+            r|= (!self.a     as u8) << 0;
+            r|= (!self.b     as u8) << 1;
+            r|= (!self.select as u8)<< 2;
+            r|= (!self.start as u8) << 3;
         }
         r
     }
-    pub fn step(ram: &mut Ram,clock:u32)->interrupt::Interrupt{
-        interrupt::Interrupt::None
+    pub fn step(ram: &mut Ram,clock:u32)->Interrupt{
+        Interrupt::None
     }
 }
 
@@ -129,7 +264,7 @@ impl Serial{
         r |= (self.start as u8) << 7;
         r
     }
-    pub fn step(ram: &mut Ram ,clock:u32)->interrupt::Interrupt{
+    pub fn step(ram: &mut Ram ,clock:u32)->Interrupt{
         if ram.serial.started
         {
             if clock==ram.serial.stoptime
@@ -137,9 +272,9 @@ impl Serial{
                 ram.serial.start = false;
                 ram.serial.started=false;
                 ram.serial.data = 0xff;
-                interrupt::Interrupt::SerialTransfer
+                Interrupt::SerialTransfer
             }else{
-                interrupt::Interrupt::None
+                Interrupt::None
             }
         }else{
             if ram.serial.start
@@ -147,7 +282,7 @@ impl Serial{
                 ram.serial.started = true;
                 ram.serial.stoptime = clock + 1024;
             } 
-            interrupt::Interrupt::None
+            Interrupt::None
         }
     }
 
@@ -174,7 +309,7 @@ impl Dma{
     pub fn read(&self)->u8{
         self.address
     }
-    pub fn step(ram: &mut Ram, clock:u32)->interrupt::Interrupt{
+    pub fn step(ram: &mut Ram, clock:u32)->Interrupt{
         if ram.dma.started {
             let tmp = ram.read8(ram.dma.index,ram.dma.address);
             ram.write8(ram.dma.index, 0xfe, tmp);
@@ -183,7 +318,7 @@ impl Dma{
                 ram.dma.started = false;
             }
         }
-        interrupt::Interrupt::None
+        Interrupt::None
     }
 }
 
@@ -233,7 +368,7 @@ impl Timer{
     pub fn read_control(&self)->u8{
         self.div_sel | ((self.start as u8)<<2) 
     }
-    pub fn step(ram: &mut Ram,clock :u32)->interrupt::Interrupt{
+    pub fn step(ram: &mut Ram,clock :u32)->Interrupt{
         if clock & 63 == 0 
         {
             ram.timer.div = ram.timer.div.wrapping_add(1);
@@ -245,13 +380,13 @@ impl Timer{
             let (r,o) = ram.timer.tima.overflowing_add(1);
             if o {
                 ram.timer.tima = ram.timer.tma;
-                interrupt::Interrupt::TimerOverflow
+                Interrupt::TimerOverflow
             }else{
                 ram.timer.tima = r;
-                interrupt::Interrupt::None
+                Interrupt::None
             }
         }else{
-            interrupt::Interrupt::None
+            Interrupt::None
         }
     }
 }
@@ -267,7 +402,7 @@ pub struct Video{
     enable_lcd:bool,
     window_tile_map:bool,   //(0=9800h-9BFFh, 1=9C00h-9FFFh)
     enable_window:bool,
-    tile_set:bool,          //(0=8800h-97FFh, 1=8000h-8FFFh)
+    pub tile_set:bool,          //(0=8800h-97FFh, 1=8000h-8FFFh)
     background_tile_map:bool,//(0=9800h-9BFFh, 1=9C00h-9FFFh)
     sprite_size:bool,       // 0 small, 1 big
     enable_sprites:bool,    
@@ -386,13 +521,13 @@ impl Video{
                         + tile_column as u16;
             
             let tile = ram.read(map_offset);
-            let (l,h) = Video::read_tile(ram, tile_line, tile_sub_line as u16);
+            let (l,h) = Video::read_tile(ram, tile, tile_sub_line as u16);
             'inner: loop{
                 let l_bit = (l>>(7-tile_sub_column)) & 1;
                 let h_bit = (h>>(7-tile_sub_column)) & 1;
                 let color = l_bit + h_bit * 2;
                 ram.video.back_buffer[
-                    ram.video.line as usize*160+x] = 
+                    ram.video.line as usize*160+screen_x] = 
                     ram.video.background_palette[color as usize];
                 screen_x+=1;
                 if screen_x >= 160 {
@@ -462,7 +597,7 @@ impl Video{
     }
     
 
-    pub fn step(ram: &mut Ram,clock :u32)->interrupt::Interrupt{
+    pub fn step(ram: &mut Ram,clock :u32)->Interrupt{
         if ram.video.enable_lcd
         {
             ram.video.line_clock += 1;
@@ -471,7 +606,7 @@ impl Video{
                 ram.video.line += 1;
                 if ram.video.line == 145
                 {
-                    return interrupt::Interrupt::VBlank
+                    return Interrupt::VBlank
                 }
                 if ram.video.line >= 154
                 {//TODO shorter line 153
@@ -486,9 +621,10 @@ impl Video{
             }
             
         }            
-        interrupt::Interrupt::None
+        Interrupt::None
     }
     pub fn write_control(&mut self, v : u8){
+        println!("write lcd control {:02x}",v);
         let v = bit_split(v);
         self.enable_lcd = v[7];
         self.window_tile_map = v[6];
@@ -514,6 +650,7 @@ impl Video{
     } 
 
     pub fn write_status(&mut self, v : u8){
+        println!("writing status {:x}",v);
         let v = bit_split(v);
         self.enable_ly_lcy_check = v[6];
         self.enable_mode_2_oam_check = v[5];
@@ -560,6 +697,7 @@ impl Video{
     }
 
     pub fn write_window_scroll_y(&mut self,v:u8){
+        println!("write window scroll y {}",v);
         self.window_scroll_y = v;
     }
 
@@ -568,6 +706,7 @@ impl Video{
     }
 
     pub fn write_window_scroll_x(&mut self,v:u8){
+        println!("write window scroll x {}",v);
         self.window_scroll_x = v;
     }
 

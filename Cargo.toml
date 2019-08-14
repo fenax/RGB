@@ -5,3 +5,4 @@ authors = ["kasil <kasil@loutre.info>"]
 
 [dependencies]
 ggez = "0.5"
+nalgebra = "0.18"
