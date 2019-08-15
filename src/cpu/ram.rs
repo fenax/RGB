@@ -38,7 +38,7 @@ pub static DMG : [u8;0x100] =
 
 pub struct Ram{
     pub interrupt:io::InterruptManager,
-    joypad:io::Joypad,
+    pub joypad:io::Joypad,
     serial:io::Serial,
     dma:io::Dma,
     timer:io::Timer,
@@ -223,7 +223,7 @@ impl Ram{
             {},
             0x8000 ... 0x9fff => //VRAM
             {
-                println!("write to vram ({:04x}) = {:02x}",a,v);
+        //        println!("write to vram ({:04x}) = {:02x}",a,v);
                 self.vram[(a%0x2000) as usize] = v; 
             },
             0xa000 ... 0xbfff => //RAM SWITCH

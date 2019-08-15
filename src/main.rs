@@ -15,25 +15,78 @@ mod window;
 
 use cpu::*;
 
+pub enum EmuKeys{
+    Up,
+    Down,
+    Left,
+    Right,
+
+    A,
+    B,
+    Start,
+    Select,
+}
+
+pub enum ToEmu{
+    Tick,
+    KeyDown(EmuKeys),
+    KeyUp(EmuKeys),
+}
+
+
 struct Gameboy{
     ram :cpu::ram::Ram,
     reg :cpu::registers::Registers,
     alu :cpu::alu::Alu,
+
+    got_tick: bool,
 }
 impl Gameboy{
     fn origin() -> Gameboy{
         let mut r = Gameboy{
             ram : cpu::ram::Ram::origin(),
             reg : cpu::registers::Registers::origin(),
-            alu : cpu::alu::Alu::origin()
+            alu : cpu::alu::Alu::origin(),
+            got_tick : false,
         };
        // r.reg.PC=0x100;
         r
     }
 
-    
-    fn main_loop(&mut self, rx:mpsc::Receiver<u8>,
-                            tx:mpsc::Sender<([u8;160*144],Vec<u8>,Vec<u8>,Vec<u8>)>)
+
+    fn process_to_emu(&mut self,t : ToEmu){
+        match t{
+            ToEmu::Tick => self.got_tick = true,
+            ToEmu::KeyDown(k) => self.ram.joypad.press_key(k), 
+            ToEmu::KeyUp(k) =>   self.ram.joypad.up_key(k),
+        }
+    }
+
+    fn try_read_all(&mut self, rx:&mut mpsc::Receiver<ToEmu>){
+        loop{
+            match rx.try_recv(){
+                Ok(x) => self.process_to_emu(x),
+                Err(_) => return
+            }
+        }
+    }
+
+    fn wait_for_vsync(&mut self, rx:&mut mpsc::Receiver<ToEmu>){
+        if self.got_tick{
+            self.got_tick = false;
+            return
+        }
+        loop{
+            match rx.recv(){
+                Ok(ToEmu::Tick) => return,
+                Ok(anything) => self.process_to_emu(anything),
+                Err(_) => panic!("died on recv"),
+            }
+        }
+    }
+
+    fn main_loop(&mut self, mut rx: mpsc::Receiver<ToEmu>,
+                            mut tx: mpsc::Sender<([u8;160*144],Vec<u8>,Vec<u8>,Vec<u8>)>)
     {
         let mut clock = 0 as u32;
         let mut cpu_wait = 0;
@@ -45,7 +98,7 @@ impl Gameboy{
                             &mut self.reg,
                             &mut self.alu)
                    .unwrap_or(0);
-               print!("\n{}{}",self.alu,self.reg);
+   //            print!("\n{}{}",self.alu,self.reg);
               cpu::ram::io::InterruptManager::try_interrupt(&mut self.ram, &mut self.reg);
 
            }else{
@@ -82,6 +135,9 @@ impl Gameboy{
                     tx.send((self.ram.video.back_buffer,w0, w1, set)).unwrap();
                     
                 } ,
+                cpu::ram::io::Interrupt::VBlankEnd =>{
+                    self.wait_for_vsync(&mut rx);
+                }
                 _ => {},
             };
 

@@ -1,14 +1,16 @@
 extern crate nalgebra;
 
-use ggez::{graphics, Context, ContextBuilder, GameResult, conf};
+use ggez::{graphics, Context, ContextBuilder, GameResult, conf, timer};
 use ggez::event::{self, EventHandler};
 use std::sync::mpsc;
 use self::nalgebra::{Point2,Vector2};
-
+use ToEmu;
+use EmuKeys;
+use ggez::input::keyboard::{KeyMods,KeyCode};
 
 pub struct Window{
     rx: mpsc::Receiver<([u8;160*144],Vec<u8>,Vec<u8>,Vec<u8>)>,
-    tx: mpsc::Sender<u8>,
+    tx: mpsc::Sender<ToEmu>,
     buffer: graphics::Image,
 
     img_w0: graphics::Image,
@@ -24,7 +26,7 @@ pub struct Window{
 impl Window {
     pub fn new( _ctx: &mut Context,
                 rx:mpsc::Receiver<([u8;160*144],Vec<u8>,Vec<u8>,Vec<u8>)>,
-                tx:mpsc::Sender<u8>) -> Window {
+                tx:mpsc::Sender<ToEmu>) -> Window {
 
 
         // Load/create resources such as images here.
@@ -45,6 +47,7 @@ impl Window {
 
 impl EventHandler for Window {
     fn update(&mut self, _ctx: &mut Context) -> GameResult<()> {
+    while(timer::check_update_time(_ctx, 60)) {   
         match (self.rx.try_recv()){
             Ok((x,w0,w1,s)) =>{
                 let mut ar:[u8;160*144*4] = [128;160*144*4];
@@ -148,6 +151,8 @@ impl EventHandler for Window {
             },
             Err(e)=>{},
         }
+        self.tx.send(ToEmu::Tick);
+    }
 		Ok(())
     }
 
@@ -168,4 +173,39 @@ impl EventHandler for Window {
         // Draw code here...
 		graphics::present(ctx)
     }
+    fn key_down_event(&mut self,ctx: &mut Context,
+        keycode: KeyCode,_keymods: KeyMods,_repeat: bool) {
+        self.tx.send(ToEmu::KeyDown(
+        match keycode {
+            KeyCode::Up      => EmuKeys::Up,
+            KeyCode::Down    => EmuKeys::Down,
+            KeyCode::Left    => EmuKeys::Left,
+            KeyCode::Right   => EmuKeys::Right,
+
+            KeyCode::Numpad4 => EmuKeys::A,
+            KeyCode::Numpad5 => EmuKeys::B,
+            KeyCode::Numpad1 => EmuKeys::Start,
+            KeyCode::Numpad2 => EmuKeys::Select,
+            _ => return
+        }));
+    }
+
+    fn key_up_event(&mut self,_ctx: &mut Context,_keycode: KeyCode,
+        _keymods: KeyMods) {
+        self.tx.send(ToEmu::KeyUp(
+        match _keycode {
+            KeyCode::Up      => EmuKeys::Up,
+            KeyCode::Down    => EmuKeys::Down,
+            KeyCode::Left    => EmuKeys::Left,
+            KeyCode::Right   => EmuKeys::Right,
+
+            KeyCode::Numpad4 => EmuKeys::A,
+            KeyCode::Numpad5 => EmuKeys::B,
+            KeyCode::Numpad1 => EmuKeys::Start,
+            KeyCode::Numpad2 => EmuKeys::Select,
+            _ => return
+        }));
+    }
+
+
 }

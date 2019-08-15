@@ -1,6 +1,6 @@
 use cpu::*;
 use cpu::ram::Ram;
-
+use EmuKeys;
 pub fn bit_split(var :  u8)->[bool;8]{
     [
         var & 1 != 0,
@@ -29,6 +29,7 @@ pub fn bit_merge(v0: bool, v1: bool, v2: bool, v3: bool,
 }
 pub enum Interrupt{
     None,
+    VBlankEnd,
     VBlank,
     LcdcStatus,
     TimerOverflow,
@@ -94,7 +95,7 @@ impl InterruptManager{
             Interrupt::TimerOverflow => self.request_timer = true,
             Interrupt::SerialTransfer => self.request_serial = true,
             Interrupt::Joypad => self.request_joypad = true,
-            Interrupt::None => {},
+            _ => {},
         }
     }
 
@@ -163,6 +164,7 @@ impl InterruptManager{
         self.request_joypad = b[4];
     }
 }
+
 pub struct Joypad{
     p14  : bool,
     p15  : bool,
@@ -174,7 +176,8 @@ pub struct Joypad{
     b    : bool,
     start: bool,
     select:bool,
-}
+} 
+
 impl Joypad{
     pub fn origin() -> Joypad{
         Joypad{
@@ -201,6 +204,32 @@ impl Joypad{
                   |          |
         P13-------O-Down-----O-Start
                   |          |*/
+// TODO implément button interrupt
+    pub fn press_key(&mut self, k: EmuKeys){
+        match k{
+            EmuKeys::A => self.a = true,
+            EmuKeys::B => self.b = true,
+            EmuKeys::Start => self.start = true,
+            EmuKeys::Select => self.start = true,
+            EmuKeys::Up => self.up = true,
+            EmuKeys::Down => self.down = true,
+            EmuKeys::Left => self.left = true,
+            EmuKeys::Right => self.right = true,
+        };
+    }
+
+    pub fn up_key(&mut self, k:EmuKeys){
+        match k{
+            EmuKeys::A => self.a = false,
+            EmuKeys::B => self.b = false,
+            EmuKeys::Start => self.start = false,
+            EmuKeys::Select => self.start = false,
+            EmuKeys::Up => self.up = false,
+            EmuKeys::Down => self.down = false,
+            EmuKeys::Left => self.left = false,
+            EmuKeys::Right => self.right = false,
+        };        
+    }
     pub fn write(&mut self,v :u8){
         self.p14 = (v & (1<<4)) != 0;
         self.p15 = (v & (1<<5)) != 0;
@@ -612,6 +641,7 @@ impl Video{
                 {//TODO shorter line 153
                     ram.video.line = 0;
                     ram.video.window_line = 0;
+                    return Interrupt::VBlankEnd
                 }
             }else{
                 if ram.video.line_clock == 1 && ram.video.line < 144 {
