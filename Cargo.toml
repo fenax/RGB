@@ -6,3 +6,5 @@ authors = ["kasil <kasil@loutre.info>"]
 [dependencies]
 ggez = "0.5"
 nalgebra = "0.18"
+libpulse-binding = { version = "2.0" }
+libpulse-simple-binding = { version = "2.0" }

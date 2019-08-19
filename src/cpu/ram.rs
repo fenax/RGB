@@ -43,6 +43,7 @@ pub struct Ram{
     dma:io::Dma,
     timer:io::Timer,
     pub video:io::Video,
+    pub audio:io::Audio,
 
     pub ram:[u8;0x2000],
     pub rom:[u8;0x4000],
@@ -64,6 +65,7 @@ impl Ram{
             dma    : io::Dma::origin(),
             timer  : io::Timer::origin(),
             video  : io::Video::origin(),
+            audio  : io::Audio::origin(),
 
             ram:[0;0x2000],
             rom:[0;0x4000],
@@ -142,6 +144,12 @@ impl Ram{
             0x07 => self.timer.write_control(v),
 
             0x0f => self.interrupt.write_interrupt_request(v),
+
+            0x10 => self.audio.write_sound_mode1_sweep(v),
+            0x11 => self.audio.write_sound_mode1_lp(v),
+            0x12 => self.audio.write_sound_mode1_envelope(v),
+            0x13 => self.audio.write_sound_mode1_frequency_lo(v),
+            0x14 => self.audio.write_sound_mode1_frequency_hi(v),
 
             0x40 => self.video.write_control(v),
             0x41 => self.video.write_status(v),

@@ -47,7 +47,7 @@ impl Window {
 
 impl EventHandler for Window {
     fn update(&mut self, _ctx: &mut Context) -> GameResult<()> {
-    while(timer::check_update_time(_ctx, 60)) {   
+   // while(timer::check_update_time(_ctx, 60)) {   
         match (self.rx.try_recv()){
             Ok((x,w0,w1,s)) =>{
                 let mut ar:[u8;160*144*4] = [128;160*144*4];
@@ -151,8 +151,8 @@ impl EventHandler for Window {
             },
             Err(e)=>{},
         }
-        self.tx.send(ToEmu::Tick);
-    }
+ //       self.tx.send(ToEmu::Tick);
+  //  }
 		Ok(())
     }
 
