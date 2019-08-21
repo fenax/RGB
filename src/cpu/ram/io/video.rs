@@ -312,7 +312,7 @@ impl Video{
             };
             'inner: loop{
 //                println!("x {} f.x {}",x,f.x);
-                let tile_column = (x+8-f.x);
+                let tile_column = x+8-f.x;
                 let l_bit = (l>>(7-tile_column)) & 1;
                 let h_bit = (h>>(7-tile_column)) & 1;
                 let color = l_bit + h_bit * 2;
@@ -339,7 +339,7 @@ impl Video{
     }
     
 
-    pub fn step(ram: &mut Ram,clock :u32)->Interrupt{
+    pub fn step(ram: &mut Ram,_clock :u32)->Interrupt{
         if ram.video.enable_lcd
         {
             ram.video.line_clock += 1;

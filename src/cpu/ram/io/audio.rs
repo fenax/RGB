@@ -85,7 +85,7 @@ impl Square{
 
     pub fn step_envelope(&mut self){
         if self.enable == false {return;}
-        let t = if(self.envelope_add_mode){
+        let t = if self.envelope_add_mode{
             self.volume.wrapping_add(1)
         }else{
             self.volume.wrapping_sub(1)
@@ -98,7 +98,7 @@ impl Square{
             };
     }
     pub fn step_sweep(&mut self){
-        if(self.sweep_enable && self.sweep_period>0){
+        if self.sweep_enable && self.sweep_period>0{
             self.sweep_period -= 1;
             self.frequency = self.shadow_frequency;
             self.calculate_sweep();
@@ -117,9 +117,7 @@ impl Square{
             self.shadow_frequency = t;
         }
     }
-    pub fn trigger(&mut self){
-        self.must_trigger = true;
-    }
+  
     pub fn step(&mut self,clock:u32){
         if self.must_trigger{
             self.last_rise = clock;

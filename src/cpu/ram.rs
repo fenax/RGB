@@ -214,7 +214,6 @@ impl Ram{
                 {
                     0
                 },
-            _ => panic!("all ram should be covered")
         }
     }
     
@@ -270,7 +269,6 @@ impl Ram{
                 => // empty, no IO
                 {
                 },
-            _ => panic!("all ram should be covered")
         }
       //  println!("wrote {:02x}:{} at {:04x}",v,v as char,a);
     }

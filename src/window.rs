@@ -48,7 +48,7 @@ impl Window {
 impl EventHandler for Window {
     fn update(&mut self, _ctx: &mut Context) -> GameResult<()> {
    // while(timer::check_update_time(_ctx, 60)) {   
-        match (self.rx.try_recv()){
+        match self.rx.try_recv(){
             Ok((x,w0,w1,s)) =>{
                 let mut ar:[u8;160*144*4] = [128;160*144*4];
                 let mut out_w0:[u8;256*256*4]= [128;256*256*4];
@@ -149,7 +149,7 @@ impl EventHandler for Window {
                 self.img_tileset = graphics::Image::from_rgba8(_ctx,128,192,&out_tile).unwrap();       
                 self.buffer = graphics::Image::from_rgba8(_ctx,160,144,&ar).unwrap();
             },
-            Err(e)=>{},
+            Err(_e)=>{},
         }
  //       self.tx.send(ToEmu::Tick);
   //  }

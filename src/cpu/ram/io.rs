@@ -91,7 +91,7 @@ impl InterruptManager{
         }
     }
 
-    pub fn step(ram : &mut ram::Ram,clock: u32)->Interrupt{
+    pub fn step(ram : &mut ram::Ram,_clock: u32)->Interrupt{
         if ram.interrupt.order_disable{
             ram.interrupt.order_disable = false;
             ram.interrupt.master_enable = false;
@@ -269,7 +269,7 @@ impl Joypad{
         }
         r
     }
-    pub fn step(ram: &mut Ram,clock:u32)->Interrupt{
+    pub fn step(ram: &mut Ram,_clock:u32)->Interrupt{
         Interrupt::None
     }
 }
@@ -354,7 +354,7 @@ impl Dma{
     pub fn read(&self)->u8{
         self.address
     }
-    pub fn step(ram: &mut Ram, clock:u32)->Interrupt{
+    pub fn step(ram: &mut Ram, _clock:u32)->Interrupt{
         if ram.dma.started {
             let tmp = ram.read8(ram.dma.index,ram.dma.address);
             ram.write8(ram.dma.index, 0xfe, tmp);
@@ -388,7 +388,7 @@ impl Timer{
             start:false,
         }
     }
-    pub fn write_div(&mut self,v: u8 ){
+    pub fn write_div(&mut self,_v: u8 ){
         self.div = 0;
     }
     pub fn write_tima(&mut self,v: u8){

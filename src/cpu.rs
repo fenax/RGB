@@ -8,7 +8,6 @@ use self::alu::*;
 use self::ram::*;
 use self::registers::*;
 
-use std::fmt;
 
 pub fn u8tou16(l:u8,h:u8) -> u16{
     ((h as u16)<<8) | (l as u16)
@@ -717,7 +716,7 @@ pub fn instruct(ram : &mut Ram, reg : &mut Registers, alu: &mut Alu)
 
             }
 */
-		if (!alu.Fsub) {
+		if !alu.Fsub {
 			if alu.Fcarry || reg.A > 0x99 {
 				reg.A = reg.A.wrapping_add( 0x60);
 				alu.Fcarry = true;
@@ -1224,6 +1223,5 @@ pub fn instruct(ram : &mut Ram, reg : &mut Registers, alu: &mut Alu)
         0xd3 | 0xdb | 0xdd | 0xe3 |
         0xe4 | 0xeb | 0xec | 0xed |
         0xf4 | 0xfc | 0xfd => {panic!("cpu catch fire");},
-        _ => panic!("all op should be in the list")
     }
 }
