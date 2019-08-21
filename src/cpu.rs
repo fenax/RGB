@@ -634,7 +634,11 @@ pub fn instruct(ram : &mut Ram, reg : &mut Registers, alu: &mut Alu)
         0xe8 => {
             let b = read_op(ram,reg);
             let bb = u8toi16(b);
-            reg.SP = alu.add16_(reg.SP,bb);
+            alu.Fhalf = ((reg.SP&0xf) + (bb&0xf))>0xf;
+            alu.Fcarry = ((reg.SP&0xff)+ (bb&0xff))>0xff;
+            alu.Fsub = false;
+            reg.SP = reg.SP.wrapping_add(bb);
+            alu.Fzero = false;
             Some(3)
         },
 
@@ -866,10 +870,17 @@ pub fn instruct(ram : &mut Ram, reg : &mut Registers, alu: &mut Alu)
         0xf8 => {
             let b = read_op(ram,reg);
             let bb = u8toi16(b);
-            let r = alu.add16_(reg.SP,bb);
+
+            alu.Fhalf = ((reg.SP&0xf) + (bb&0xf))>0xf;
+            alu.Fcarry = ((reg.SP&0xff)+ (bb&0xff))>0xff;
+            alu.Fsub = false;
+            let r = reg.SP.wrapping_add(bb);
+            alu.Fzero = false;
+
             let (l,h) = u16tou8(r);
             reg.L = l;
             reg.H = h;
+            alu.Fzero = false;
 //            reg.L = ram.read(r);
 //            reg.H = ram.read(r.wrapping_add(1));
             Some(3)
