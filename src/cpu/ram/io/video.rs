@@ -1,21 +1,96 @@
 use cpu::ram::io::*;
 use cpu::*;
 use cpu::ram::Ram;
+use std::cmp::Ordering;
 
+
+#[derive(Copy,Clone,Eq)]
+pub struct Sprite{
+    pub y:u8,
+    pub x:u8,
+    pub tile:u8,
+    behind_bg:bool,
+    y_flip:bool,
+    x_flip:bool,
+    palette:bool,
+    //vrambank CGB
+    //palette CGB
+}
+
+impl Ord for Sprite{
+    fn cmp(&self, other: &Self) -> Ordering{
+        self.x.cmp(&other.x)
+    }
+}
+impl PartialOrd for Sprite{
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering>{
+        Some(self.cmp(other))
+    }
+}
+impl PartialEq for Sprite{
+    fn eq(&self, other: &Self) -> bool {
+        self.x == other.x
+    }
+}
+
+
+impl Sprite{
+    pub fn origin()->Sprite{
+        Sprite{
+            x:0,
+            y:0,
+            tile:0,
+            behind_bg:false,
+            y_flip:false,
+            x_flip:false,
+            palette:false,
+        }
+    }
+    pub fn write_y(&mut self, v:u8){
+        self.y = v;
+    }
+    pub fn write_x(&mut self, v:u8){
+        self.x = v;
+    }
+    pub fn write_tile(&mut self, v:u8){
+        self.tile = v;
+    }
+    pub fn write_attr(&mut self, v:u8){
+        self.behind_bg = bit(v,7);
+        self.y_flip = bit(v,6);
+        self.x_flip = bit(v,5);
+        self.palette = bit(v,4);
+    }
+    pub fn write(&mut self, a:u16, v:u8){
+        match a&3{
+            0 => self.write_y(v),
+            1 => self.write_x(v),
+            2 => self.write_tile(v),
+            3 => self.write_attr(v),
+            _ => panic!("impossible"),
+        }
+    }
+}
 
 pub struct Video{
    // frame_clock:u32,
     line_clock:u16,
     line:u8,
     window_line:u8,
+    pub vram:[u8;0x2000],
+    
     pub back_buffer: [u8;144*160],
+    oam:[Sprite;40],
 
 
     enable_lcd:bool,
     window_tile_map:bool,   //(0=9800h-9BFFh, 1=9C00h-9FFFh)
+                            //   1800  1BFF     1C00  1FFF
     enable_window:bool,
     pub tile_set:bool,          //(0=8800h-97FFh, 1=8000h-8FFFh)
+                                //   0800  17FF     0000  0FFF
     background_tile_map:bool,//(0=9800h-9BFFh, 1=9C00h-9FFFh)
+                             //   1800  1BFF     9C00  1FFF
     sprite_size:bool,       // 0 small, 1 big
     enable_sprites:bool,    
     enable_background:bool, 
@@ -47,7 +122,9 @@ pub struct Video{
 impl Video{
     pub fn origin()->Video{
         Video{
+            oam:[Sprite::origin();40],
             back_buffer : [0;144*160],
+            vram:[0;0x2000],
             line_clock : 0,
             line : 0,
             window_line:0,
@@ -81,48 +158,49 @@ impl Video{
         }
     }
 
-    fn read_tile(ram:&mut Ram, tile:u8, subline:u16)->(u8,u8){
+    fn read_tile(& self, tile:u8, subline:u16)->(u8,u8){
         let bg_tile_data:u16 =
-            if ram.video.tile_set {
-                0x8000
+            if self.tile_set {
+                0x0000
             }else{
-                0x9000
+                0x1000
             };
         let tile_offset = 
-            if ram.video.tile_set {
+            if self.tile_set {
                 bg_tile_data + tile as u16*16
             }else{
                 bg_tile_data.wrapping_add(u8toi16(tile)*16)
             } + subline*2;
-        let l = ram.read(tile_offset);
-        let h = ram.read(tile_offset+1);
+        let tile_offset = tile_offset as usize;
+        let l = self.vram[tile_offset];
+        let h = self.vram[tile_offset+1];
         (l,h)
     }
 
-    fn draw_window(ram:&mut Ram){
-        if ram.video.enable_window == false 
-            || ram.video.window_scroll_x>=167
-            || ram.video.window_scroll_y>ram.video.line{
+    fn draw_window(&mut self){
+        if self.enable_window == false 
+            || self.window_scroll_x>=167
+            || self.window_scroll_y>self.line{
             return
         }
         let tile_map:u16 = 
-            if ram.video.window_tile_map{
-                0x9C00
+            if self.window_tile_map{
+                0x1C00
             }else{
-                0x9800
+                0x1800
             };
         let mut screen_x;
         let mut window_x;
-            if ram.video.window_scroll_x<=7 {
+            if self.window_scroll_x<=7 {
                 screen_x = 0;
-                window_x = ram.video.window_scroll_x as usize;
+                window_x = self.window_scroll_x as usize;
             }else{
-                screen_x = (ram.video.window_scroll_x-7) as usize;
+                screen_x = (self.window_scroll_x-7) as usize;
                 window_x = 0;
             } ;
 
-        let tile_line = ram.video.line/8;
-        let tile_sub_line = ram.video.line %8; 
+        let tile_line = self.line/8;
+        let tile_sub_line = self.line %8; 
 
         'outer: loop{
             let tile_column = window_x%8;
@@ -131,16 +209,17 @@ impl Video{
                     tile_map +
                         tile_line as u16 *32
                         + tile_column as u16;
+            let map_offset = map_offset as usize;
             
-            let tile = ram.read(map_offset);
-            let (l,h) = Video::read_tile(ram, tile, tile_sub_line as u16);
+            let tile = self.vram[map_offset];
+            let (l,h) = self.read_tile(tile, tile_sub_line as u16);
             'inner: loop{
                 let l_bit = (l>>(7-tile_sub_column)) & 1;
                 let h_bit = (h>>(7-tile_sub_column)) & 1;
                 let color = l_bit + h_bit * 2;
-                ram.video.back_buffer[
-                    ram.video.line as usize*160+screen_x] = 
-                    ram.video.background_palette[color as usize];
+                self.back_buffer[
+                    self.line as usize*160+screen_x] = 
+                    self.background_palette[color as usize];
                 screen_x+=1;
                 if screen_x >= 160 {
                     break 'outer;
@@ -156,25 +235,25 @@ impl Video{
 
     }
 
-    fn draw_bg(ram:&mut Ram){
-        if ram.video.enable_background == false {
-            ram.video.back_buffer = [255;144*160];
+    fn draw_bg(&mut self){
+        if self.enable_background == false {
+            self.back_buffer = [255;144*160];
             return
             }
 
         let mut x :usize = 0;
         //Draw time
         let bg_tile_map:u16 = 
-            if ram.video.background_tile_map{
-                0x9C00
+            if self.background_tile_map{
+                0x1C00
             }else{
-                0x9800
+                0x1800
             };
-        let bg_line = (ram.video.line as u16 
-                    + ram.video.scroll_y as u16)%256;
+        let bg_line = (self.line as u16 
+                    + self.scroll_y as u16)%256;
         let bg_tile_line = bg_line/8;
         let bg_tile_sub_line = bg_line %8;
-        let mut bg_column = ram.video.scroll_x as u16;
+        let mut bg_column = self.scroll_x as u16;
 
         'outer: loop {
             let bg_tile_column = (bg_column%256)/8;
@@ -183,17 +262,17 @@ impl Video{
                     bg_tile_map
                         + bg_tile_line*32
                         + bg_tile_column;
-            let tile = ram.read(bg_map_offset);
-            let (l,h) = Video::read_tile(ram,tile,bg_tile_sub_line);
+            let tile = self.vram[bg_map_offset as usize];
+            let (l,h) = self.read_tile(tile,bg_tile_sub_line);
 
             'inner: loop{
                 let l_bit = (l>>(7-bg_tile_sub_column)) & 1;
                 let h_bit = (h>>(7-bg_tile_sub_column)) & 1;
                 let color = l_bit + h_bit * 2;
                 // println!("line {} x {}",ram.video.line,x);
-                ram.video.back_buffer[
-                    ram.video.line as usize*160+x] = 
-                    ram.video.background_palette[color as usize];
+                self.back_buffer[
+                    self.line as usize*160+x] = 
+                    self.background_palette[color as usize];
 
                 x+=1;
                 if x >= 160 {
@@ -206,6 +285,57 @@ impl Video{
                 }
             }
         }          
+    }
+    pub fn draw_sprite_8(&mut self){
+        if self.enable_sprites == false{
+            return
+        }
+        let mut list:Vec<Sprite> = 
+            self.oam.iter().filter(|s| s.y <= self.line +16 && s.y > self.line +16-8).copied().collect();
+        list.sort();
+        let mut i = list.iter();
+        let mut x = 0;
+        'outer: loop{
+            let f = i.next();
+            if f.is_none(){
+                break 'outer;
+            }
+            let f = f.unwrap();
+            x = std::cmp::max(f.x-8,x);
+            let tile_line =self.line as i16 - (f.y as i16 - 16);
+//            println!("self.line {} f.y {} tile_line {}",self.line,f.y,tile_line);
+            let tile_line = if f.x_flip { 7 - tile_line }else{tile_line};
+            assert!(tile_line>=0 && tile_line<8);
+            let (l,h) = self.read_tile(f.tile,tile_line as u16);
+            let pal = if f.palette{  &self.sprite_palette_1
+                             }else{  &self.sprite_palette_0
+            };
+            'inner: loop{
+//                println!("x {} f.x {}",x,f.x);
+                let tile_column = (x+8-f.x);
+                let l_bit = (l>>(7-tile_column)) & 1;
+                let h_bit = (h>>(7-tile_column)) & 1;
+                let color = l_bit + h_bit * 2;
+                if color > 0{
+                    let idx = self.line as usize * 160+x as usize;
+                    
+                    if  !f.behind_bg ||
+                        self.back_buffer[idx] == self.background_palette[0]
+                        {
+                            self.back_buffer[idx] = pal[color as usize-1];
+                        }
+                    
+                }
+
+                if x>= 160 {
+                    break 'outer;
+                }
+                x+= 1;
+                if x >= f.x{
+                    break 'inner;
+                }
+            }
+        }
     }
     
 
@@ -228,8 +358,9 @@ impl Video{
                 }
             }else{
                 if ram.video.line_clock == 1 && ram.video.line < 144 {
-                    Video::draw_bg(ram);
-                    Video::draw_window(ram);
+                    ram.video.draw_bg();
+                    ram.video.draw_sprite_8();
+                    ram.video.draw_window();
                 }
             }
             
@@ -368,5 +499,14 @@ impl Video{
         self.sprite_palette_1[0] = base[((v>>2)&3) as usize];
         self.sprite_palette_1[1] = base[((v>>4)&3) as usize];
         self.sprite_palette_1[2] = base[((v>>6)&3) as usize];
+    }
+    pub fn write_oam(&mut self,a:u16, v:u8){
+        self.oam[(a>>2) as usize].write(a&0x3,v);
+    }
+    pub fn write_vram(&mut self,a:u16,v:u8){
+        self.vram[a as usize] = v;
+    }
+    pub fn read_vram(&self,a:u16)->u8{
+        self.vram[a as usize]
     }
 }

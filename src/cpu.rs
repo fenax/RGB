@@ -1154,7 +1154,7 @@ pub fn instruct(ram : &mut Ram, reg : &mut Registers, alu: &mut Alu)
         0xd9 => {
             reg.PC = ram.pop16(&mut reg.SP);
             ram.interrupt.master_enable = true;
-            println!("RETI PC{:x} SP{:x}",reg.PC,reg.SP);
+//            println!("RETI PC{:x} SP{:x}",reg.PC,reg.SP);
             //TODO should interrupt be enabled directly or like DI and EI ?
             Some(1)
         },

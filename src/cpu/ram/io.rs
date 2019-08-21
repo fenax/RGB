@@ -7,6 +7,13 @@ use cpu::*;
 use cpu::ram::Ram;
 use EmuKeys;
 
+pub fn bit(var:u8,bit:u8)->bool{
+    var & (1<<bit) != 0
+}
+
+pub fn bits(var:u8,lowest_bit:u8,len:u8)->u8{
+    (var >> lowest_bit) & ((1<<len)-1)
+}
 
 pub fn bit_split(var :  u8)->[bool;8]{
     [
@@ -42,7 +49,7 @@ pub enum Interrupt{
     TimerOverflow,
     SerialTransfer,
     Joypad,
-    AudioSample(u8),
+    AudioSample(u8,u8),
 }
 
 pub struct InterruptManager{
@@ -111,7 +118,7 @@ impl InterruptManager{
                          reg : &mut registers::Registers){
         if ram.interrupt.master_enable{
             if ram.interrupt.enable_vblank && ram.interrupt.request_vblank{
-                println!("running Vblank PC{:x} SP{:x}",reg.PC,reg.SP);
+//                println!("running Vblank PC{:x} SP{:x}",reg.PC,reg.SP);
                 ram.interrupt.master_enable = false;
                 ram.interrupt.request_vblank = false;
                 ram.push16(&mut reg.SP,reg.PC);
@@ -292,6 +299,7 @@ impl Serial{
         self.data
     }
     pub fn write_control(&mut self,v :u8){
+        println!("Serial Control {}",v);
         self.start = (v & (1<<7)) != 0;
         self.internal_clock = (v & 1) != 0;
     }

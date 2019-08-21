@@ -103,7 +103,10 @@ impl Gameboy{
         let mut clock = 0 as u32;
         let mut cpu_wait = 0;
         let mut frame_start = Instant::now();
-
+        let mut buffer_index = 0;
+        let mut buffer = [0;2048];
+        
+        s.write(&buffer);
 
         loop {
             let frame_end = frame_start + frame_duration;
@@ -137,19 +140,21 @@ impl Gameboy{
            self.ram.interrupt.add_interrupt(&i_dma);
            self.ram.interrupt.add_interrupt(&i_video);
             match i_audio{
-                cpu::ram::io::Interrupt::AudioSample(x) =>
+                cpu::ram::io::Interrupt::AudioSample(l,r) =>
                 {
-                 if x>0{
-
- //                  println!("sound {}",x);
-                 }
-                    let ar = [x,x];
-                    match s.write(&ar){
-                        Err(x) =>{
-                            panic!(x.to_string());
-                        },
-                        _=>{},
-                    };
+                    buffer[buffer_index*2] = l;
+                    buffer[buffer_index*2+1] = r;
+                    //TODO stereo
+                    buffer_index += 1;
+                    if buffer_index*2 == buffer.len(){
+                        /*match s.write(&buffer){
+                            Err(x) =>{
+                                panic!(x.to_string());
+                            },
+                            _=>{},
+                        };*/
+                        buffer_index = 0;
+                    }
                 },
                 _ => {},
             };
@@ -161,15 +166,15 @@ impl Gameboy{
                     let mut w0 = Vec::new();
                     let mut w1 = Vec::new();
 
-                    set.extend_from_slice(&self.ram.vram[0..=0x17ff]);
-                    w0.extend_from_slice(&self.ram.vram[0x1800..=0x1bff]);
-                    w1.extend_from_slice(&self.ram.vram[0x1c00..=0x1fff]);
+                    set.extend_from_slice(&self.ram.video.vram[0..=0x17ff]);
+                    w0.extend_from_slice(&self.ram.video.vram[0x1800..=0x1bff]);
+                    w1.extend_from_slice(&self.ram.video.vram[0x1c00..=0x1fff]);
 
                     tx.send((self.ram.video.back_buffer,w0, w1, set)).unwrap();
                     
                 } ,
                 cpu::ram::io::Interrupt::VBlankEnd =>{
-                    println!("LATENCY {:?}",s.get_latency());
+ //                   println!("LATENCY {:?}",s.get_latency());
  //                   thread::sleep(frame_end - Instant::now());
  //                   frame_start = frame_end;
                 }

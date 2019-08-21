@@ -49,7 +49,6 @@ pub struct Ram{
     pub rom:[u8;0x4000],
     pub romswitch:[u8;0x4000],
     pub ramswitch:[u8;0x2000],
-    pub vram:[u8;0x2000],
     hram:[u8;0x7f],
     oam:[u8;0xa0],
     booting:bool,
@@ -71,7 +70,6 @@ impl Ram{
             rom:[0;0x4000],
             romswitch:[0;0x4000],
             ramswitch:[0;0x2000],
-            vram:[0;0x2000],
             hram:[0;0x7f],
             oam:[0;0xa0],
             booting:true,
@@ -151,6 +149,15 @@ impl Ram{
             0x13 => self.audio.write_sound_mode1_frequency_lo(v),
             0x14 => self.audio.write_sound_mode1_frequency_hi(v),
 
+            0x16 => self.audio.write_sound_mode2_lp(v),
+            0x17 => self.audio.write_sound_mode2_envelope(v),
+            0x18 => self.audio.write_sound_mode2_frequency_lo(v),
+            0x19 => self.audio.write_sound_mode2_frequency_hi(v),
+
+            0x24 => self.audio.write_stereo_volume(v),
+            0x25 => self.audio.write_output_selection(v),
+            0x26 => self.audio.write_power_flag(v),
+
             0x40 => self.video.write_control(v),
             0x41 => self.video.write_status(v),
             0x42 => self.video.write_scroll_y(v),
@@ -182,7 +189,7 @@ impl Ram{
             0x4000 ... 0x7fff => //ROM SWITCH
                 self.romswitch[(a-0x4000) as usize],
             0x8000 ... 0x9fff => //VRAM
-                self.vram[(a%0x2000) as usize],
+                self.video.read_vram(a-0x8000),
             0xa000 ... 0xbfff => //RAM SWITCH
                 self.ramswitch[(a%0x2000) as usize],
             //    panic!("access to unimplemented ram"),
@@ -232,7 +239,7 @@ impl Ram{
             0x8000 ... 0x9fff => //VRAM
             {
         //        println!("write to vram ({:04x}) = {:02x}",a,v);
-                self.vram[(a%0x2000) as usize] = v; 
+                self.video.write_vram(a-0x8000, v); 
             },
             0xa000 ... 0xbfff => //RAM SWITCH
                 self.ramswitch[(a%0x2000) as usize] = v,
@@ -242,7 +249,8 @@ impl Ram{
             0xe000 ... 0xfdff => //RAM INTERN EC
                 self.ram[(a%0x2000) as usize] = v,
             0xfe00 ... 0xfe9f => //OAM
-                self.oam[(a-0xfe00) as usize] = v,
+                //self.oam[(a-0xfe00) as usize] = v, 
+                self.video.write_oam(a-0xfe00,v),
             0xff00 ... 0xff4b => //IO
             {
                 self.write_io(a - 0xff00,v)
