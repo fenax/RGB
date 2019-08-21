@@ -40,13 +40,19 @@ pub fn instr_cb(ram: &mut Ram,
                 // RL
                 2 => {
                     let c = val&0x80 != 0;
-                    val = val.wrapping_shl(1) + alu.Fcarry as u8;
+                    val = val.wrapping_shl(1);
+                    if alu.Fcarry {
+                        val |= 1;
+                    }
                     alu.Fcarry = c;
                 },
                 // RR
                 3 => {
                     let c = val&1 != 0;
-                    val = val.wrapping_shr(1) + (alu.Fcarry as u8) << 7;
+                    val = val.wrapping_shr(1);
+                    if alu.Fcarry {
+                        val |= 0x80;
+                    }
                     alu.Fcarry = c;
                 },
                 // SLA
@@ -58,13 +64,17 @@ pub fn instr_cb(ram: &mut Ram,
                 5 => {
                     let c = val&0x80 != 0;
                     alu.Fcarry = val&1 != 0;
-                    val = val.wrapping_shr(1) + c as u8;
+                    val = val.wrapping_shr(1);
+                    if c {
+                        val |= 0x80;
+                    }
                 },
                 // SWAP
                 6 => {
                     let h = (val&0xf0)>>4;
                     let l = (val&0xf)<<4;
                     val = h+l;
+                    alu.Fcarry = false;
                 },
                 // SRL
                 7 => {
@@ -84,9 +94,9 @@ pub fn instr_cb(ram: &mut Ram,
                 alu.Fzero = val&bit_mask == 0;
             },
             // RES
-            2 => {val = val | bit_mask;},
+            2 => {val = val & !bit_mask;},
             // SET
-            3 => {val = val & !bit_mask;},
+            3 => {val = val | bit_mask;},
             _ => panic!("impossible")
         };
         match op_reg {

@@ -118,7 +118,7 @@ impl Alu{
     }
     pub fn adc(&mut self,a:&mut u8,b:u8)->Option<u8>{
         if self.Fcarry {
-            self.Fhalf = ((*a&0xf) + (b&0xf + 1))>0xf;
+            self.Fhalf = ((*a&0xf) + ((b&0xf) + 1))>0xf;
             self.Fsub = false;
             let (r1,c1) = a.overflowing_add(b);
             let (r,c2) =  r1.overflowing_add(1);

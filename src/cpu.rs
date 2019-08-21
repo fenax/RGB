@@ -502,16 +502,16 @@ pub fn instruct(ram : &mut Ram, reg : &mut Registers, alu: &mut Alu)
 
         //INC (HL)
         0x34 => {
-            let (mut l,mut h) = ram.read88(reg.L,reg.H);
-            alu.inc16(&mut l,&mut h);
-            ram.write88(reg.L,reg.H,(l,h));
+            let mut v = ram.read8(reg.L,reg.H);
+            alu.inc(&mut v);
+            ram.write8(reg.L,reg.H,v);
             Some(2)
         }
         //DEC (HL)
         0x35 => {
-            let (mut l,mut h) = ram.read88(reg.L,reg.H);
-            alu.dec16(&mut l,&mut h);
-            ram.write88(reg.L,reg.H,(l,h));
+            let mut v = ram.read8(reg.L,reg.H);
+            alu.dec(&mut v);
+            ram.write8(reg.L,reg.H,v);
             Some(2)
         }
 
@@ -644,7 +644,10 @@ pub fn instruct(ram : &mut Ram, reg : &mut Registers, alu: &mut Alu)
             let c = (reg.A & 0x80) != 0 ;
             reg.A = (reg.A << 1) + c as u8;
             alu.Fcarry = c;
-            alu.Fzero = reg.A == 0;
+ //           alu.Fzero = reg.A == 0;
+            alu.Fzero = false;
+            alu.Fsub = false;
+            alu.Fhalf = false;
             None
         },
         //RRCA
@@ -652,7 +655,10 @@ pub fn instruct(ram : &mut Ram, reg : &mut Registers, alu: &mut Alu)
             let c = (reg.A & 1 ) !=0;
             reg.A = (reg.A >> 1) + if c{0x80}else{0};
             alu.Fcarry = c;
-            alu.Fzero = reg.A == 0;
+//            alu.Fzero = reg.A == 0;
+            alu.Fzero = false;
+            alu.Fsub = false;
+            alu.Fhalf = false;
             None
 
         },
@@ -661,7 +667,10 @@ pub fn instruct(ram : &mut Ram, reg : &mut Registers, alu: &mut Alu)
             let c = (reg.A & 0x80) != 0 ;
             reg.A = (reg.A << 1) + alu.Fcarry as u8;
             alu.Fcarry = c;
-            alu.Fzero =reg.A == 0;
+//            alu.Fzero =reg.A == 0;
+            alu.Fzero = false;
+            alu.Fsub = false;
+            alu.Fhalf = false;
             None
         },
         //RRA
@@ -669,7 +678,10 @@ pub fn instruct(ram : &mut Ram, reg : &mut Registers, alu: &mut Alu)
             let c = (reg.A & 1 ) !=0;
             reg.A = (reg.A >> 1) + if alu.Fcarry {0x80}else{0};
             alu.Fcarry = c;
-            alu.Fzero = reg.A == 0;
+            //alu.Fzero = reg.A == 0;
+            alu.Fzero = false;
+            alu.Fsub = false;
+            alu.Fhalf = false;
             None
         },
         //DAA
@@ -734,11 +746,15 @@ pub fn instruct(ram : &mut Ram, reg : &mut Registers, alu: &mut Alu)
         //SCF set carry flag
         0x37 => {
             alu.Fcarry = true;
+            alu.Fsub = false;
+            alu.Fhalf = false;
             None
         },
-        //CCF clear carry flag
+        //CCF complement not clear carry flag
         0x3f => {
-            alu.Fcarry = false;
+            alu.Fcarry = !alu.Fcarry;
+            alu.Fsub = false;
+            alu.Fhalf = false;
             None
         },
 
@@ -851,8 +867,11 @@ pub fn instruct(ram : &mut Ram, reg : &mut Registers, alu: &mut Alu)
             let b = read_op(ram,reg);
             let bb = u8toi16(b);
             let r = alu.add16_(reg.SP,bb);
-            reg.L = ram.read(r);
-            reg.H = ram.read(r+1);
+            let (l,h) = u16tou8(r);
+            reg.L = l;
+            reg.H = h;
+//            reg.L = ram.read(r);
+//            reg.H = ram.read(r.wrapping_add(1));
             Some(3)
         },
         //LD SP,HL
@@ -871,28 +890,28 @@ pub fn instruct(ram : &mut Ram, reg : &mut Registers, alu: &mut Alu)
         //POP BC
         0xc1 => {
             reg.C = ram.read(reg.SP);
-            reg.B = ram.read(reg.SP+1);
+            reg.B = ram.read(reg.SP.wrapping_add(1));
             reg.SP +=2;
             Some(3)
         },
         //POP DE
         0xd1 =>{
             reg.E = ram.read(reg.SP);
-            reg.D = ram.read(reg.SP+1);
+            reg.D = ram.read(reg.SP.wrapping_add(1));
             reg.SP += 2;
             Some(3)
         },
         //POP HL
         0xe1 => {
             reg.L = ram.read(reg.SP);
-            reg.H = ram.read(reg.SP+1);
+            reg.H = ram.read(reg.SP.wrapping_add(1));
             reg.SP += 2;
             Some(3)
         },
         //POP AF
         0xf1 => {
             alu.set_f(ram.read(reg.SP));
-            reg.A   = ram.read(reg.SP+1);
+            reg.A   = ram.read(reg.SP.wrapping_add(1));
             reg.SP += 2;
             Some(3)
         },
