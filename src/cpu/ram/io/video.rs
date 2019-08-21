@@ -78,9 +78,14 @@ pub struct Video{
     line:u8,
     window_line:u8,
     pub vram:[u8;0x2000],
+    tiles:[[u8;8*8];0x180],
     
     pub back_buffer: [u8;144*160],
     oam:[Sprite;40],
+
+    pub updated_tiles:bool,
+    pub updated_map_1:bool,
+    pub updated_map_2:bool,
 
 
     enable_lcd:bool,
@@ -125,9 +130,15 @@ impl Video{
             oam:[Sprite::origin();40],
             back_buffer : [0;144*160],
             vram:[0;0x2000],
+            tiles:[[0;8*8];0x180],
+
             line_clock : 0,
             line : 0,
             window_line:0,
+
+            updated_map_1:false,
+            updated_map_2:false,
+            updated_tiles:false,
 
             enable_lcd : false,
             window_tile_map : false,
@@ -156,6 +167,12 @@ impl Video{
             window_scroll_x :0,
             window_scroll_y :0,
         }
+    }
+
+    pub fn clear_update(&mut self){
+        self.updated_tiles = false;
+        self.updated_map_1 = false;
+        self.updated_map_2 = false;
     }
 
     fn read_tile(& self, tile:u8, subline:u16)->(u8,u8){
@@ -263,12 +280,14 @@ impl Video{
                         + bg_tile_line*32
                         + bg_tile_column;
             let tile = self.vram[bg_map_offset as usize];
-            let (l,h) = self.read_tile(tile,bg_tile_sub_line);
+            //let (l,h) = self.read_tile(tile,bg_tile_sub_line);
 
             'inner: loop{
-                let l_bit = (l>>(7-bg_tile_sub_column)) & 1;
-                let h_bit = (h>>(7-bg_tile_sub_column)) & 1;
-                let color = l_bit + h_bit * 2;
+                //let l_bit = (l>>(7-bg_tile_sub_column)) & 1;
+                //let h_bit = (h>>(7-bg_tile_sub_column)) & 1;
+                //let color = l_bit + h_bit * 2;
+                let color = self.tiles[tile as usize]
+                                [(bg_tile_sub_line*8+bg_tile_sub_column) as usize];
                 // println!("line {} x {}",ram.video.line,x);
                 self.back_buffer[
                     self.line as usize*160+x] = 
@@ -504,6 +523,39 @@ impl Video{
         self.oam[(a>>2) as usize].write(a&0x3,v);
     }
     pub fn write_vram(&mut self,a:u16,v:u8){
+        match a{
+            0...0x17ff => {
+                self.updated_tiles = true;
+                let a = a as usize;
+                if a&1 == 0 {
+                    //low bits
+                    let bits = bit_split(v);
+                    for i in 0..8{
+                        self.tiles[a/16][a%16*4 + i]=
+                            if bits[7-i]{
+                                self.tiles[a/16][a%16*4+i] | 1
+                            }else{
+                                self.tiles[a/16][a%16*4+i] & !1
+                            };
+                    }
+                }else{
+                    //high bits
+                    let a = a - 1;
+                    let bits = bit_split(v);
+                    for i in 0..8{
+                        self.tiles[a/16][(a%16)*4 + i]=
+                            if bits[7-i]{
+                                self.tiles[a/16][a%16*4+i] | 2
+                            }else{
+                                self.tiles[a/16][a%16*4+i] & !2
+                            };
+                    }
+                } 
+            },
+            0x1800...0x1bff => self.updated_map_1 = true,
+            0x1c00...0x1fff => self.updated_map_2 = true,
+            _ => panic!(),
+        }
         self.vram[a as usize] = v;
     }
     pub fn read_vram(&self,a:u16)->u8{

@@ -181,6 +181,7 @@ impl InterruptManager{
 }
 
 pub struct Joypad{
+    interrupt:bool,
     p14  : bool,
     p15  : bool,
     up   : bool,
@@ -196,6 +197,7 @@ pub struct Joypad{
 impl Joypad{
     pub fn origin() -> Joypad{
         Joypad{
+            interrupt :false,
             p14 : true,
             p15 : true,
 
@@ -221,6 +223,8 @@ impl Joypad{
                   |          |*/
 // TODO implément button interrupt
     pub fn press_key(&mut self, k: EmuKeys){
+        println!("keypress {:?}",&k);
+        self.interrupt = true;
         match k{
             EmuKeys::A => self.a = true,
             EmuKeys::B => self.b = true,
@@ -248,11 +252,13 @@ impl Joypad{
     pub fn write(&mut self,v :u8){
         self.p14 = (v & (1<<4)) != 0;
         self.p15 = (v & (1<<5)) != 0;
+//        println!("selection input p14{} p15{}",self.p14,self.p15);
     }
     pub fn read(&self)->u8{
         // unsure, assuming out port is out only.
         let mut r = 0;
-        
+        r |= (self.p14 as u8) << 4;
+        r |= (self.p15 as u8) << 5;
         if !self.p14
         {
             r|= (!self.right as u8) << 0;
@@ -267,9 +273,14 @@ impl Joypad{
             r|= (!self.select as u8)<< 2;
             r|= (!self.start as u8) << 3;
         }
+//        println!("reading buttons {:02x}",r);
         r
     }
     pub fn step(ram: &mut Ram,_clock:u32)->Interrupt{
+        if ram.joypad.interrupt{
+            ram.joypad.interrupt = false;
+            return Interrupt::Joypad
+        }
         Interrupt::None
     }
 }

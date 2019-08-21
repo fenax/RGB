@@ -23,7 +23,7 @@ mod window;
 
 use cpu::*;
 
-
+#[derive(Debug)]
 pub enum EmuKeys{
     Up,
     Down,
@@ -65,6 +65,7 @@ impl Gameboy{
 
 
     fn process_to_emu(&mut self,t : ToEmu){
+        println!("process KEYPRESS");
         match t{
             ToEmu::Tick => self.got_tick = true,
             ToEmu::KeyDown(k) => self.ram.joypad.press_key(k), 
@@ -96,7 +97,10 @@ impl Gameboy{
     }
 
     fn main_loop(&mut self, mut rx: mpsc::Receiver<ToEmu>,
-                            mut tx: mpsc::Sender<([u8;160*144],Vec<u8>,Vec<u8>,Vec<u8>)>,
+                            mut tx: mpsc::Sender<([u8;160*144],
+                                                    Option<Vec<u8>>,
+                                                    Option<Vec<u8>>,
+                                                    Option<Vec<u8>>)>,
                             mut s : Simple)
     {
         let frame_duration :Duration = Duration::new(0,1000000000/60);
@@ -104,7 +108,7 @@ impl Gameboy{
         let mut cpu_wait = 0;
         let mut frame_start = Instant::now();
         let mut buffer_index = 0;
-        let mut buffer = [0;2048];
+        let mut buffer = [0;1024*4];
         
         s.write(&buffer);
 
@@ -142,17 +146,17 @@ impl Gameboy{
             match i_audio{
                 cpu::ram::io::Interrupt::AudioSample(l,r) =>
                 {
-                    buffer[buffer_index*2] = l;
-                    buffer[buffer_index*2+1] = r;
+                    buffer[buffer_index*4+1] = l;
+                    buffer[buffer_index*4+3] = r;
                     //TODO stereo
                     buffer_index += 1;
-                    if buffer_index*2 == buffer.len(){
-                        /*match s.write(&buffer){
+                    if buffer_index*4 == buffer.len(){
+                        match s.write(&buffer){
                             Err(x) =>{
                                 panic!(x.to_string());
                             },
                             _=>{},
-                        };*/
+                        };
                         buffer_index = 0;
                     }
                 },
@@ -162,18 +166,32 @@ impl Gameboy{
             {
                 cpu::ram::io::Interrupt::VBlank =>{
                     //println!("got VBLANK");
-                    let mut set = Vec::new();
-                    let mut w0 = Vec::new();
-                    let mut w1 = Vec::new();
-
-                    set.extend_from_slice(&self.ram.video.vram[0..=0x17ff]);
-                    w0.extend_from_slice(&self.ram.video.vram[0x1800..=0x1bff]);
-                    w1.extend_from_slice(&self.ram.video.vram[0x1c00..=0x1fff]);
-
+                    let set = if self.ram.video.updated_tiles {
+                        let mut set = Vec::new();
+                        set.extend_from_slice(&self.ram.video.vram[0..=0x17ff]);
+                        Some(set)
+                    }else{
+                        None
+                    };
+                    let w0 = if self.ram.video.updated_map_1{
+                        let mut w0 = Vec::new();
+                        w0.extend_from_slice(&self.ram.video.vram[0x1800..=0x1bff]);
+                        Some(w0)
+                    }else{
+                        None
+                    };
+                    let w1 =  if self.ram.video.updated_map_2{
+                        let mut w1 = Vec::new();
+                        w1.extend_from_slice(&self.ram.video.vram[0x1c00..=0x1fff]);
+                        Some(w1)
+                    }else{
+                        None
+                    };
                     tx.send((self.ram.video.back_buffer,w0, w1, set)).unwrap();
-                    
+                    self.ram.video.clear_update();
                 } ,
                 cpu::ram::io::Interrupt::VBlankEnd =>{
+                    self.try_read_all(&mut rx);
  //                   println!("LATENCY {:?}",s.get_latency());
  //                   thread::sleep(frame_end - Instant::now());
  //                   frame_start = frame_end;
@@ -205,7 +223,7 @@ fn main() -> io::Result<()>{
     let (to_emulator, inbox_emulator) = mpsc::channel();
 
     let spec = sample::Spec {
-        format: sample::Format::U8,
+        format: sample::Format::S16le,
         channels: 2,
         rate: 44100,
     };
@@ -236,7 +254,8 @@ fn main() -> io::Result<()>{
     f.read_exact(&mut gb.ram.rom)?;
     f.read_exact(&mut gb.ram.romswitch)?;
 
-    thread::spawn(move|| {
+    thread::Builder::new().name("emulator".to_string())
+    .spawn(move|| {
         gb.main_loop(inbox_emulator,to_window,s);
 
     });

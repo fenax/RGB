@@ -9,7 +9,10 @@ use EmuKeys;
 use ggez::input::keyboard::{KeyMods,KeyCode};
 
 pub struct Window{
-    rx: mpsc::Receiver<([u8;160*144],Vec<u8>,Vec<u8>,Vec<u8>)>,
+    rx: mpsc::Receiver<([u8;160*144],
+                        Option<Vec<u8>>,
+                        Option<Vec<u8>>,
+                        Option<Vec<u8>>)>,
     tx: mpsc::Sender<ToEmu>,
     buffer: graphics::Image,
 
@@ -17,17 +20,20 @@ pub struct Window{
     img_w1: graphics::Image,
     img_tileset: graphics::Image,
 
+    src_tile:Vec<u8>,
+    src_w0:Vec<u8>,
+    src_w1:Vec<u8>,
 
 
 }
 
-
-
 impl Window {
     pub fn new( _ctx: &mut Context,
-                rx:mpsc::Receiver<([u8;160*144],Vec<u8>,Vec<u8>,Vec<u8>)>,
+                rx:mpsc::Receiver<([u8;160*144],
+                                    Option<Vec<u8>>,
+                                    Option<Vec<u8>>,
+                                    Option<Vec<u8>>)>,
                 tx:mpsc::Sender<ToEmu>) -> Window {
-
 
         // Load/create resources such as images here.
         Window {
@@ -37,117 +43,142 @@ impl Window {
             img_w0:graphics::Image::from_rgba8(_ctx,256,256,&[128;256*256*4]).unwrap(),
             img_w1:graphics::Image::from_rgba8(_ctx,256,256,&[128;256*256*4]).unwrap(),
             img_tileset:graphics::Image::from_rgba8(_ctx,128,128,&[128;128*128*4]).unwrap(),
-		    // ...
+            src_tile:vec![0;0x1800],
+            src_w0:vec![0;0x1c00-0x1800],
+            src_w1:vec![0;0x2000-0x1c00],
 		}
     }
 
 }
 
-
-
 impl EventHandler for Window {
     fn update(&mut self, _ctx: &mut Context) -> GameResult<()> {
    // while(timer::check_update_time(_ctx, 60)) {   
-        match self.rx.try_recv(){
+        match self.rx.recv_timeout(std::time::Duration::new(0,1000000)){
             Ok((x,w0,w1,s)) =>{
+                let updated_w0 = w0.is_some();
+                let updated_w1 = w1.is_some();
+                let updated_s = s.is_some();
                 let mut ar:[u8;160*144*4] = [128;160*144*4];
-                let mut out_w0:[u8;256*256*4]= [128;256*256*4];
-                let mut out_w1:[u8;256*256*4]= [128;256*256*4];
-                let mut out_tile:[u8;128*192*4]= [128;128*192*4];
-                for (i, v) in x.iter().enumerate(){
-                    ar[i*4] = *v;
-                    ar[i*4+1] = *v;
-                    ar[i*4+2] = *v;
+                for i in 0..x.len(){
+                    ar[i*4] = x[i];
+                    ar[i*4+1] = x[i];
+                    ar[i*4+2] = x[i];
                     ar[i*4+3] = 255;
                 }
-                for x in 0..32{
-                    for y in 0..32{
-                        let tile = w0[x+y*32] as usize;
-                        for tile_y in 0..8{
-                            let l = s[tile*16+tile_y*2];
-                            let h = s[tile*16+tile_y*2+1];
-                            for tile_x in 0..8{
-                                let l_bit = (l>>(7-tile_x)) & 1;
-                                let h_bit = (h>>(7-tile_x)) & 1;
-                                let color = l_bit + h_bit * 2;
-                                let offset = ((y*8+tile_y)*256+x*8+tile_x)*4;
-
-                                let color = 
-                                match color{
-                                    0 => 255,
-                                    1 => 170,
-                                    2 => 80,
-                                    _ => 0
-                                };
-
-                                out_w0[offset] = color;
-                                out_w0[offset+1] = color;
-                                out_w0[offset+2] = color;
-                                out_w0[offset+3] = 255;
-                            }
-                        }
-                    }
-                }
-                for x in 0..32{
-                    for y in 0..32{
-                        let tile = w1[x+y*32] as usize;
-                        for tile_y in 0..8{
-                            let l = s[tile*16+tile_y*2];
-                            let h = s[tile*16+tile_y*2+1];
-                            for tile_x in 0..8{
-                                let l_bit = (l>>(7-tile_x)) & 1;
-                                let h_bit = (h>>(7-tile_x)) & 1;
-                                let color = l_bit + h_bit * 2;
-                                let offset = ((y*8+tile_y)*256+x*8+tile_x)*4;
-
-                                let color = 
-                                match color{
-                                    0 => 255,
-                                    1 => 170,
-                                    2 => 80,
-                                    _ => 0
-                                };
-
-                                out_w1[offset] = color;
-                                out_w1[offset+1] = color;
-                                out_w1[offset+2] = color;
-                                out_w1[offset+3] = 255;
-                            }
-                        }
-                    }
-                }
-                for x in 0..16{
-                    for y in 0..24{
-                        let tile = y*16+x as usize;
-                        for tile_y in 0..8{
-                            let l = s[tile*16+tile_y*2];
-                            let h = s[tile*16+tile_y*2+1];
-                            for tile_x in 0..8{
-                                let l_bit = (l>>(7-tile_x)) & 1;
-                                let h_bit = (h>>(7-tile_x)) & 1;
-                                let color = l_bit + h_bit * 2;
-                                let offset = ((y*8+tile_y)*128+x*8+tile_x)*4;
-
-                                let color = 
-                                match color{
-                                    0 => 255,
-                                    1 => 170,
-                                    2 => 80,
-                                    _ => 0
-                                };
-
-                                out_tile[offset] = color;
-                                out_tile[offset+1] = color;
-                                out_tile[offset+2] = color;
-                                out_tile[offset+3] = 255;
-                            }
-                        }
-                    }
-                }                
-                self.img_w0 = graphics::Image::from_rgba8(_ctx,256,256,&out_w0).unwrap();
-                self.img_w1 = graphics::Image::from_rgba8(_ctx,256,256,&out_w1).unwrap();       
-                self.img_tileset = graphics::Image::from_rgba8(_ctx,128,192,&out_tile).unwrap();       
                 self.buffer = graphics::Image::from_rgba8(_ctx,160,144,&ar).unwrap();
+                match s{
+                    Some(new_tile) =>{
+                        self.src_tile = new_tile;
+                        let mut out_tile:[u8;128*192*4]= [128;128*192*4];
+                                        for x in 0..16{
+                            for y in 0..24{
+                                let tile = y*16+x as usize;
+                                for tile_y in 0..8{
+                                    let l = self.src_tile[tile*16+tile_y*2];
+                                    let h = self.src_tile[tile*16+tile_y*2+1];
+                                    for tile_x in 0..8{
+                                        let l_bit = (l>>(7-tile_x)) & 1;
+                                        let h_bit = (h>>(7-tile_x)) & 1;
+                                        let color = l_bit + h_bit * 2;
+                                        let offset = ((y*8+tile_y)*128+x*8+tile_x)*4;
+
+                                        let color = 
+                                        match color{
+                                            0 => 255,
+                                            1 => 170,
+                                            2 => 80,
+                                            _ => 0
+                                        };
+
+                                        out_tile[offset] = color;
+                                        out_tile[offset+1] = color;
+                                        out_tile[offset+2] = color;
+                                        out_tile[offset+3] = 255;
+                                    }
+                                }
+                            }
+                        }                
+                        self.img_tileset = graphics::Image::from_rgba8(_ctx,128,192,&out_tile).unwrap();
+                    },
+                    None=>{},
+                }
+                match w0{
+                    Some(new_w0)=>{
+                        self.src_w0 = new_w0;
+                    },
+                    None=>{},
+                }
+                match w1{
+                    Some(new_w1)=>{
+                        self.src_w1 = new_w1;
+                    },
+                    None=>{},
+                }
+                if updated_w0 || updated_s{
+                    let mut out_w0:[u8;256*256*4]= [128;256*256*4];
+                    for x in 0..32{
+                        for y in 0..32{
+                            let tile = self.src_w0[x+y*32] as usize;
+                            for tile_y in 0..8{
+                                let l = self.src_tile[tile*16+tile_y*2];
+                                let h = self.src_tile[tile*16+tile_y*2+1];
+                                for tile_x in 0..8{
+                                    let l_bit = (l>>(7-tile_x)) & 1;
+                                    let h_bit = (h>>(7-tile_x)) & 1;
+                                    let color = l_bit + h_bit * 2;
+                                    let offset = ((y*8+tile_y)*256+x*8+tile_x)*4;
+
+                                    let color = 
+                                    match color{
+                                        0 => 255,
+                                        1 => 170,
+                                        2 => 80,
+                                        _ => 0
+                                    };
+
+                                    out_w0[offset] = color;
+                                    out_w0[offset+1] = color;
+                                    out_w0[offset+2] = color;
+                                    out_w0[offset+3] = 255;
+                                }
+                            }
+                        }
+                    }
+                    self.img_w0 = graphics::Image::from_rgba8(_ctx,256,256,&out_w0).unwrap();
+                }
+                if updated_w1 || updated_s{
+                    let mut out_w1:[u8;256*256*4]= [128;256*256*4];
+                    for x in 0..32{
+                        for y in 0..32{
+                            let tile = self.src_w1[x+y*32] as usize;
+                            for tile_y in 0..8{
+                                let l = self.src_tile[tile*16+tile_y*2];
+                                let h = self.src_tile[tile*16+tile_y*2+1];
+                                for tile_x in 0..8{
+                                    let l_bit = (l>>(7-tile_x)) & 1;
+                                    let h_bit = (h>>(7-tile_x)) & 1;
+                                    let color = l_bit + h_bit * 2;
+                                    let offset = ((y*8+tile_y)*256+x*8+tile_x)*4;
+
+                                    let color = 
+                                    match color{
+                                        0 => 255,
+                                        1 => 170,
+                                        2 => 80,
+                                        _ => 0
+                                    };
+
+                                    out_w1[offset] = color;
+                                    out_w1[offset+1] = color;
+                                    out_w1[offset+2] = color;
+                                    out_w1[offset+3] = 255;
+                                }
+                            }
+                        }
+                    }
+                    self.img_w1 = graphics::Image::from_rgba8(_ctx,256,256,&out_w1).unwrap();
+                }
             },
             Err(_e)=>{},
         }
@@ -173,8 +204,9 @@ impl EventHandler for Window {
         // Draw code here...
 		graphics::present(ctx)
     }
-    fn key_down_event(&mut self,ctx: &mut Context,
+    fn key_down_event(&mut self,_ctx: &mut Context,
         keycode: KeyCode,_keymods: KeyMods,_repeat: bool) {
+            println!("KEYCODE DOWN {:?}",keycode);
         self.tx.send(ToEmu::KeyDown(
         match keycode {
             KeyCode::Up      => EmuKeys::Up,
@@ -187,7 +219,8 @@ impl EventHandler for Window {
             KeyCode::Numpad1 => EmuKeys::Start,
             KeyCode::Numpad2 => EmuKeys::Select,
             _ => return
-        }));
+        })).unwrap();
+        println!("end KEYDOWN");
     }
 
     fn key_up_event(&mut self,_ctx: &mut Context,_keycode: KeyCode,
@@ -204,7 +237,7 @@ impl EventHandler for Window {
             KeyCode::Numpad1 => EmuKeys::Start,
             KeyCode::Numpad2 => EmuKeys::Select,
             _ => return
-        }));
+        })).unwrap();
     }
 
 

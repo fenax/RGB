@@ -12,6 +12,7 @@ pub struct Square{
     envelope_volume : u8,
     envelope_add_mode: bool,
     envelope_period : u8,
+    period:u8,
     trigger : bool,
     must_trigger : bool,
     length_enable : bool,
@@ -38,6 +39,7 @@ impl Square{
             envelope_volume : 15,
             envelope_add_mode : false,
             envelope_period:3,
+            period:0,
             trigger : false,
             must_trigger: false,
             high :false,
@@ -67,6 +69,7 @@ impl Square{
 
     pub fn step_frequency(&self)->u32{
         2048 - self.frequency as u32
+        //self.frequency as u32
     }
 /*
     pub fn next_rise(& self){
@@ -76,15 +79,17 @@ impl Square{
 
     pub fn lenght_decr(&mut self){
         if self.length_enable{
-        self.length_load = self.length_load.saturating_sub(1);
+            self.length_load = self.length_load.saturating_sub(1);
+        }
         if self.length_load == 0 {
             self.enable = false;
         }
-        }
+        
     }
 
     pub fn step_envelope(&mut self){
-        if self.enable == false {return;}
+        if self.enable == false || self.period == 0 {return;}
+        self.period -= 1;
         let t = if self.envelope_add_mode{
             self.volume.wrapping_add(1)
         }else{
@@ -126,6 +131,7 @@ impl Square{
             self.enable = true;
             self.next_change = clock;
             self.volume = self.envelope_volume;
+            self.period = self.envelope_period;
             self.change(clock);
             if self.length_load == 0 {
                 self.length_load = 64;
@@ -172,10 +178,14 @@ impl Square{
         self.sweep_period = (v >> 4) & 0x7;
         self.sweep_negate = (v & 0x8) != 0;
         self.sweep_shift  = v & 0x7;
+        println!("write sweep period {} negate {} shift {}",
+                self.sweep_period,self.sweep_negate,self.sweep_shift);
     }
     pub fn write_lp(&mut self, v:u8){
         self.duty = (v >> 6) & 0x3;
         self.length_load = v&0x3f;
+        println!("write length {} duty {}",
+                    self.length_load,self.duty);
     }
     pub fn write_envelope(&mut self, v:u8){
         self.envelope_volume = 
@@ -196,7 +206,7 @@ impl Square{
         self.frequency &= 0xff;
         self.frequency |= ((v&0x3) as u16)<<8;
         self.must_trigger = v&0x80 != 0;
-        self.length_enable = v&0x4 != 0;
+        self.length_enable = v&0x40 != 0;
         println!("write other half frequency {}{}{}",self.frequency,
         self.must_trigger,self.length_enable);
     }
@@ -301,7 +311,7 @@ impl Audio{
     }
 
     pub fn write_output_selection(&mut self,v:u8){
-        println!("setting audio output selection {:02x}",v);
+    //    println!("setting audio output selection {:02x}",v);
         self.sound4_to_left = bit(v,7);
         self.sound3_to_left = bit(v,6);
         self.sound2_to_left = bit(v,5);
