@@ -53,7 +53,7 @@ impl Window {
 
 impl EventHandler for Window {
     fn update(&mut self, _ctx: &mut Context) -> GameResult<()> {
-   // while(timer::check_update_time(_ctx, 60)) {   
+    loop {   
         match self.rx.recv_timeout(std::time::Duration::new(0,1000000)){
             Ok((x,w0,w1,s)) =>{
                 let updated_w0 = w0.is_some();
@@ -180,10 +180,10 @@ impl EventHandler for Window {
                     self.img_w1 = graphics::Image::from_rgba8(_ctx,256,256,&out_w1).unwrap();
                 }
             },
-            Err(_e)=>{},
+            Err(_e)=>{break;},
         }
- //       self.tx.send(ToEmu::Tick);
-  //  }
+
+    }
 		Ok(())
     }
 
@@ -203,6 +203,7 @@ impl EventHandler for Window {
         graphics::draw(ctx, &self.img_w1, param_map1)?;
         // Draw code here...
 		graphics::present(ctx)
+
     }
     fn key_down_event(&mut self,_ctx: &mut Context,
         keycode: KeyCode,_keymods: KeyMods,_repeat: bool) {

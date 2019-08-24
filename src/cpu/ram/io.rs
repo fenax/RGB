@@ -49,7 +49,7 @@ pub enum Interrupt{
     TimerOverflow,
     SerialTransfer,
     Joypad,
-    AudioSample(u8,u8),
+    AudioSample(f32,f32),
 }
 
 pub struct InterruptManager{

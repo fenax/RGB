@@ -154,6 +154,11 @@ impl Ram{
             0x18 => self.audio.write_sound_mode2_frequency_lo(v),
             0x19 => self.audio.write_sound_mode2_frequency_hi(v),
 
+            0x1b => self.audio.wave3.write_lp(v),
+            0x1c => self.audio.wave3.write_volume(v),
+            0x1d => self.audio.wave3.write_frequency_lo(v),
+            0x1e => self.audio.wave3.write_frequency_hi(v),
+
             0x24 => self.audio.write_stereo_volume(v),
             0x25 => self.audio.write_output_selection(v),
             0x26 => self.audio.write_power_flag(v),

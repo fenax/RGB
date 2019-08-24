@@ -1,7 +1,7 @@
 extern crate ggez;
 extern crate libpulse_binding as pulse;
 extern crate libpulse_simple_binding as psimple;
-
+extern crate byteorder;
 use ggez::{graphics, Context, ContextBuilder, GameResult, conf};
 use ggez::event::{self, EventHandler};
 
@@ -17,7 +17,8 @@ use std::time::{Instant, Duration};
 use psimple::Simple;
 use pulse::stream::Direction;
 use pulse::sample;
-
+use byteorder::{LittleEndian, WriteBytesExt};
+use std::mem;
 mod cpu;
 mod window;
 
@@ -103,17 +104,23 @@ impl Gameboy{
                                                     Option<Vec<u8>>)>,
                             mut s : Simple)
     {
-        let frame_duration :Duration = Duration::new(0,1000000000/60);
         let mut clock = 0 as u32;
         let mut cpu_wait = 0;
         let mut frame_start = Instant::now();
         let mut buffer_index = 0;
-        let mut buffer = [0;1024*4];
-        
+        let mut buffer = [0;1024*2*mem::size_of::<f64>()];
+/*        let mut timing = std::vec::Vec::new();
+        let mut vblanks = std::vec::Vec::new();
+        let mut apush   = std::vec::Vec::new();*/
+        let mut file = File::create("out.pcm").ok().unwrap();
+
         s.write(&buffer);
 
         loop {
-            let frame_end = frame_start + frame_duration;
+/*            timing.push(std::time::Instant::now());
+            if timing.len() > 10000000{
+                break;
+            }*/
            clock = clock.wrapping_add(1);
            if cpu_wait == 0{
                cpu_wait =
@@ -146,18 +153,26 @@ impl Gameboy{
             match i_audio{
                 cpu::ram::io::Interrupt::AudioSample(l,r) =>
                 {
-                    buffer[buffer_index*4+1] = l;
-                    buffer[buffer_index*4+3] = r;
+                    let size = mem::size_of::<f32>();
+                    let index = buffer_index*2*size;
+                    let index2 = (buffer_index*2+1)*size;
+                    buffer[index..index+size].as_mut().write_f32::<LittleEndian>(l as f32);
+                    buffer[index2..index2+size].as_mut().write_f32::<LittleEndian>(r as f32);
                     //TODO stereo
                     buffer_index += 1;
-                    if buffer_index*4 == buffer.len(){
+                    if buffer_index*2*size >= buffer.len(){
                         match s.write(&buffer){
                             Err(x) =>{
                                 panic!(x.to_string());
                             },
                             _=>{},
                         };
+                        file.write_all(&buffer);
+//                        apush.push(std::time::Instant::now());
+                        thread::yield_now();
                         buffer_index = 0;
+                    }else if buffer_index*8 == buffer.len(){
+                        thread::yield_now();
                     }
                 },
                 _ => {},
@@ -189,6 +204,7 @@ impl Gameboy{
                     };
                     tx.send((self.ram.video.back_buffer,w0, w1, set)).unwrap();
                     self.ram.video.clear_update();
+//                    vblanks.push(std::time::Instant::now());
                 } ,
                 cpu::ram::io::Interrupt::VBlankEnd =>{
                     self.try_read_all(&mut rx);
@@ -215,22 +231,35 @@ impl Gameboy{
                 
            }
         }
+        /*
+        for i in 1..timing.len(){
+            println!("{},",(timing[i]-timing[i-1]).as_nanos())
+        }
+        println!("%%%%% VBLANK");
+        for i in 0..vblanks.len(){
+            println!("{},",(vblanks[i]-timing[0]).as_nanos());
+        }
+        println!("%%%%% PULSE");
+        for i in 0..apush.len(){
+            println!("{},",(apush[i]-timing[0]).as_nanos());
+        }*/
         println!("stopped at pc = {:04x}",self.reg.PC);
     }
 }
 fn main() -> io::Result<()>{
     let (to_window, inbox_window) = mpsc::channel();
     let (to_emulator, inbox_emulator) = mpsc::channel();
-
     let spec = sample::Spec {
-        format: sample::Format::S16le,
+        format: sample::Format::F32le,
         channels: 2,
         rate: 44100,
     };
     assert!(spec.is_valid());
     let mut b_attr = libpulse_binding::def::BufferAttr::default();
-    b_attr.maxlength = 750;
-    b_attr.tlength = 750;
+    b_attr.maxlength = 2048;
+    b_attr.tlength = 512;
+    b_attr.prebuf = 512;
+    b_attr.minreq = 512;
 
     let s = Simple::new(
         None,                // Use the default server
@@ -240,7 +269,8 @@ fn main() -> io::Result<()>{
         "bleep",             // Description of our stream
         &spec,               // Our sample format
         None,                // Use default channel map
-        Some(&b_attr)                 // Use default buffering attributes
+        //Some(&b_attr)                 // Use default buffering attributes
+        None
     ).unwrap();
     let mut gb = Gameboy::origin();
     let mut f = File::open("test.gb")?; 
