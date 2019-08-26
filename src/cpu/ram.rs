@@ -163,6 +163,8 @@ impl Ram{
             0x25 => self.audio.write_output_selection(v),
             0x26 => self.audio.write_power_flag(v),
 
+            0x30...0x3f => self.audio.wave3.write_sample_ram(a-0x30,v),
+
             0x40 => self.video.write_control(v),
             0x41 => self.video.write_status(v),
             0x42 => self.video.write_scroll_y(v),
