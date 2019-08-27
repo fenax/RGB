@@ -118,7 +118,7 @@ impl InterruptManager{
                          reg : &mut registers::Registers){
         if ram.interrupt.master_enable{
             if ram.interrupt.enable_vblank && ram.interrupt.request_vblank{
-//                println!("running Vblank PC{:x} SP{:x}",reg.PC,reg.SP);
+                println!("running Vblank PC{:x} SP{:x}",reg.PC,reg.SP);
                 ram.interrupt.master_enable = false;
                 ram.interrupt.request_vblank = false;
                 ram.push16(&mut reg.SP,reg.PC);
@@ -162,21 +162,25 @@ impl InterruptManager{
                     self.request_joypad,false,false,false)
     }
     pub fn write_interrupt_enable(&mut self, v:u8){
-        let b = bit_split(v);
-        self.enable_vblank = b[0];
-        self.enable_lcd_stat = b[1];
-        self.enable_timer = b[2];
-        self.enable_serial = b[3];
-        self.enable_joypad = b[4];
+        self.enable_vblank = bit(v,0);
+        self.enable_lcd_stat = bit(v,1);
+        self.enable_timer = bit(v,2);
+        self.enable_serial = bit(v,3);
+        self.enable_joypad = bit(v,4);
+        println!("write interrupt enable {} {} {} {} {}",self.enable_vblank,
+                self.enable_lcd_stat,self.enable_timer,self.enable_serial,
+                self.enable_joypad);
     }
     pub fn write_interrupt_request(&mut self, v:u8){
-        println!("write interrupt request {:02x}",v);
-        let b = bit_split(v);
-        self.request_vblank = b[0];
-        self.request_lcd_stat = b[1];
-        self.request_timer = b[2];
-        self.request_serial = b[3];
-        self.request_joypad = b[4];
+//        let b = bit_split(v);
+        self.request_vblank = bit(v,0);
+        self.request_lcd_stat = bit(v,1);
+        self.request_timer = bit(v,2);
+        self.request_serial = bit(v,3);
+        self.request_joypad = bit(v,4);
+        println!("write interrupt request {} {} {} {} {}",self.request_vblank,
+                self.request_lcd_stat,self.request_timer,self.request_serial,
+                self.request_joypad);
     }
 }
 
@@ -229,7 +233,7 @@ impl Joypad{
             EmuKeys::A => self.a = true,
             EmuKeys::B => self.b = true,
             EmuKeys::Start => self.start = true,
-            EmuKeys::Select => self.start = true,
+            EmuKeys::Select => self.select = true,
             EmuKeys::Up => self.up = true,
             EmuKeys::Down => self.down = true,
             EmuKeys::Left => self.left = true,
@@ -242,7 +246,7 @@ impl Joypad{
             EmuKeys::A => self.a = false,
             EmuKeys::B => self.b = false,
             EmuKeys::Start => self.start = false,
-            EmuKeys::Select => self.start = false,
+            EmuKeys::Select => self.select = false,
             EmuKeys::Up => self.up = false,
             EmuKeys::Down => self.down = false,
             EmuKeys::Left => self.left = false,
@@ -252,7 +256,7 @@ impl Joypad{
     pub fn write(&mut self,v :u8){
         self.p14 = (v & (1<<4)) != 0;
         self.p15 = (v & (1<<5)) != 0;
-//        println!("selection input p14{} p15{}",self.p14,self.p15);
+        println!("selection input p14{} p15{}",self.p14,self.p15);
     }
     pub fn read(&self)->u8{
         // unsure, assuming out port is out only.
@@ -273,15 +277,16 @@ impl Joypad{
             r|= (!self.select as u8)<< 2;
             r|= (!self.start as u8) << 3;
         }
-//        println!("reading buttons {:02x}",r);
+        println!("reading buttons {:02x}",r);
         r
     }
     pub fn step(ram: &mut Ram,_clock:u32)->Interrupt{
         if ram.joypad.interrupt{
             ram.joypad.interrupt = false;
-            return Interrupt::Joypad
+            Interrupt::Joypad
+        }else{
+            Interrupt::None
         }
-        Interrupt::None
     }
 }
 
@@ -303,14 +308,14 @@ impl Serial{
         }
     }
     pub fn write_data(&mut self,v :u8){
-        println!("Serial {:02x} {}",v,v as char);
+    //    println!("Serial {:02x} {}",v,v as char);
         self.data = v;
     }
     pub fn read_data(&self) -> u8{
         self.data
     }
     pub fn write_control(&mut self,v :u8){
-        println!("Serial Control {}",v);
+    //    println!("Serial Control {}",v);
         self.start = (v & (1<<7)) != 0;
         self.internal_clock = (v & 1) != 0;
     }

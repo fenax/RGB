@@ -25,7 +25,7 @@ pub fn instruct(ram : &mut Ram, reg : &mut Registers, alu: &mut Alu)
 ->Option<u8>{
     fn read_op(ram:&mut Ram, reg:&mut Registers) -> u8{
         let r = ram.read(reg.PC);
- //       print!("{:02x} ",r);
+//        print!("{:02x} ",r);
         reg.PC += 1;
         r
     }

@@ -10,15 +10,18 @@ use ggez::input::keyboard::{KeyMods,KeyCode};
 
 pub struct Window{
     rx: mpsc::Receiver<([u8;160*144],
+                        Vec<u8>,
                         Option<Vec<u8>>,
                         Option<Vec<u8>>,
                         Option<Vec<u8>>)>,
     tx: mpsc::Sender<ToEmu>,
+    font: graphics::Font,
     buffer: graphics::Image,
 
     img_w0: graphics::Image,
     img_w1: graphics::Image,
     img_tileset: graphics::Image,
+    hram: graphics::Text,
 
     src_tile:Vec<u8>,
     src_w0:Vec<u8>,
@@ -30,19 +33,27 @@ pub struct Window{
 impl Window {
     pub fn new( _ctx: &mut Context,
                 rx:mpsc::Receiver<([u8;160*144],
+                                    Vec<u8>,
                                     Option<Vec<u8>>,
                                     Option<Vec<u8>>,
                                     Option<Vec<u8>>)>,
                 tx:mpsc::Sender<ToEmu>) -> Window {
 
         // Load/create resources such as images here.
+        let font ;
+        match graphics::Font::new(_ctx, "/DejaVuSansMono.ttf"){
+            Ok(v) => font = v,
+            Err(e) => panic!("failed on {:?}",e),
+        }
         Window {
             rx,
             tx,
+            font,
             buffer:graphics::Image::from_rgba8(_ctx,160,144,&[128;160*144*4]).unwrap(),
             img_w0:graphics::Image::from_rgba8(_ctx,256,256,&[128;256*256*4]).unwrap(),
             img_w1:graphics::Image::from_rgba8(_ctx,256,256,&[128;256*256*4]).unwrap(),
             img_tileset:graphics::Image::from_rgba8(_ctx,128,128,&[128;128*128*4]).unwrap(),
+            hram:graphics::Text::new(("Coming soon", font, 12.0)),
             src_tile:vec![0;0x1800],
             src_w0:vec![0;0x1c00-0x1800],
             src_w1:vec![0;0x2000-0x1c00],
@@ -55,11 +66,25 @@ impl EventHandler for Window {
     fn update(&mut self, _ctx: &mut Context) -> GameResult<()> {
     loop {   
         match self.rx.recv_timeout(std::time::Duration::new(0,1000000)){
-            Ok((x,w0,w1,s)) =>{
+            Ok((x,m,w0,w1,s)) =>{
                 let updated_w0 = w0.is_some();
                 let updated_w1 = w1.is_some();
                 let updated_s = s.is_some();
                 let mut ar:[u8;160*144*4] = [128;160*144*4];
+
+                let mut h:std::string::String = "".to_string();
+                let mut sep = "";
+                for i in 0..m.len(){
+                    h = format!("{}{}{:02x}",&h,&sep,m[i]);
+                    if (i+1)%4==0 {
+                        sep = "\n";
+                    }else{
+                        sep = " ";
+                    }
+                }
+                self.hram = graphics::Text::new((h,self.font,12.0));
+
+                
                 for i in 0..x.len(){
                     ar[i*4] = x[i];
                     ar[i*4+1] = x[i];
@@ -196,11 +221,14 @@ impl EventHandler for Window {
                 .dest(Point2::new(256.0,0.0));
         let param_game = graphics::DrawParam::default()
                 .dest(Point2::new(256.0,256.0));
+        let param_hram = graphics::DrawParam::default()
+                .dest(Point2::new(420.0,0.0));
 		graphics::clear(ctx, graphics::Color::from_rgb(0,0,255));
         graphics::draw(ctx, &self.buffer, param_game)?;
         graphics::draw(ctx, &self.img_tileset, param_tile)?;
         graphics::draw(ctx, &self.img_w0, param_map0)?;
         graphics::draw(ctx, &self.img_w1, param_map1)?;
+        graphics::draw(ctx, &self.hram, param_hram)?;
         // Draw code here...
 		graphics::present(ctx)
 

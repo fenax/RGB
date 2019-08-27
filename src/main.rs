@@ -99,6 +99,7 @@ impl Gameboy{
 
     fn main_loop(&mut self, mut rx: mpsc::Receiver<ToEmu>,
                             mut tx: mpsc::Sender<([u8;160*144],
+                                                    Vec<u8>,
                                                     Option<Vec<u8>>,
                                                     Option<Vec<u8>>,
                                                     Option<Vec<u8>>)>,
@@ -123,12 +124,13 @@ impl Gameboy{
             }*/
            clock = clock.wrapping_add(1);
            if cpu_wait == 0{
-               cpu_wait =
+//                print!("\n{}{}",self.alu,self.reg);
+
+                cpu_wait =
                    instruct(&mut self.ram,
                             &mut self.reg,
                             &mut self.alu)
                    .unwrap_or(0);
-   //            print!("\n{}{}",self.alu,self.reg);
               cpu::ram::io::InterruptManager::try_interrupt(&mut self.ram, &mut self.reg);
 
            }else{
@@ -202,7 +204,9 @@ impl Gameboy{
                     }else{
                         None
                     };
-                    tx.send((self.ram.video.back_buffer,w0, w1, set)).unwrap();
+                    let mut m = Vec::new();
+                    m.extend_from_slice(&self.ram.hram);
+                    tx.send((self.ram.video.back_buffer,m,w0, w1, set)).unwrap();
                     self.ram.video.clear_update();
 //                    vblanks.push(std::time::Instant::now());
                 } ,

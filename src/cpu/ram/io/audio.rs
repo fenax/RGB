@@ -1,7 +1,9 @@
 use cpu::ram::io::*;
 use cpu::*;
 use cpu::ram::Ram;
- 
+
+
+const Audio_Debug :bool = false;
 
 pub struct Noise{
     length:u8,
@@ -121,7 +123,7 @@ impl Noise{
     pub fn step_sample(&mut self,sample_len:f64, clock:u32)->f64{
         if self.enable{
             (self.change(sample_len, clock) * self.envelope_volume as f64)
-            /16.0
+            /16.0 - 0.5
         }else{
             0.0
         }
@@ -132,7 +134,9 @@ impl Noise{
 
     pub fn write_lp(&mut self, v:u8){
         self.length = 63 - (v&0x3f);
-        println!("NOISE write length {}",self.length);
+        if Audio_Debug{
+            println!("NOISE write length {}",self.length);
+        }
     }
     pub fn write_envelope(&mut self, v:u8){
         self.envelope_volume = 
@@ -141,8 +145,10 @@ impl Noise{
                 v&0x8 != 0;
         self.envelope_period = 
                 v&0x7;
-        println!("NOISE write envelope {} {} {}",self.envelope_volume,
-        self.envelope_add_mode,self.envelope_period);
+        if Audio_Debug{
+            println!("NOISE write envelope {} {} {}",self.envelope_volume,
+            self.envelope_add_mode,self.envelope_period);
+        }
     }
     pub fn write_shift_reg(&mut self, v:u8){
         self.clock_shift = 
@@ -151,15 +157,19 @@ impl Noise{
                 v&0x8 != 0;
         self.divisor_code = 
                 v&0x7;
-        println!("NOISE write shift reg {} {} {}",self.clock_shift,
-        self.width_mode,self.divisor_code);
+        if Audio_Debug{
+           println!("NOISE write shift reg {} {} {}",self.clock_shift,
+            self.width_mode,self.divisor_code);
+        }
     }
         
     pub fn write_frequency_hi(&mut self, v:u8){
         self.must_trigger = v&0x80 != 0;
         self.length_enable = v&0x40 != 0;
-        println!("NOISE write triggers{}{}",
-        self.must_trigger,self.length_enable);
+        if Audio_Debug{
+            println!("NOISE write triggers{}{}",
+            self.must_trigger,self.length_enable);
+        }
     }
 }
 
@@ -223,10 +233,10 @@ impl Wave{
             let last = self.samples[((self.cursor-1)%32) as usize] as f64;
             let new  = self.samples[((self.cursor)%32) as usize] as f64;
             self.cursor = self.cursor % 32;
-            println!("(1.0 - {}) * {} + {0} * {}",prop,last,new);
+//            println!("(1.0 - {}) * {} + {0} * {}",prop,last,new);
             (prop * last + (1.0 - prop) * new) 
         }else{
-            println!("nochange {} {}",self.cursor,self.samples[(self.cursor%32) as usize]);
+//            println!("nochange {} {}",self.cursor,self.samples[(self.cursor%32) as usize]);
             self.samples[(self.cursor%32) as usize] as f64
         }
         
@@ -262,21 +272,27 @@ impl Wave{
     }
     pub fn write_lp(&mut self, v:u8){
         self.length = 255 - v;
-        println!("WAVE write length {} ",self.length);
+        if Audio_Debug{
+            println!("WAVE write length {} ",self.length);
+        }
     }
 
     pub fn write_frequency_lo(&mut self, v:u8){
         self.frequency &= 0xff00;
         self.frequency |= v as u16;
-        println!("WAVE write half frequency");
+        if Audio_Debug{
+            println!("WAVE write half frequency");
+        }
     }
     pub fn write_frequency_hi(&mut self, v:u8){
         self.frequency &= 0xff;
         self.frequency |= ((v&0x3) as u16)<<8;
         self.must_trigger = v&0x80 != 0;
         self.length_enable = v&0x40 != 0;
-        println!("WAVE write other half frequency {}{}{}",self.frequency,
-        self.must_trigger,self.length_enable);
+        if Audio_Debug{
+            println!("WAVE write other half frequency {}{}{}",self.frequency,
+            self.must_trigger,self.length_enable);
+        }
     } 
     pub fn write_sample_ram(&mut self, a:u16, v:u8){
         self.samples[(a*2) as usize] = v >> 4;
@@ -458,14 +474,18 @@ impl Square{
         self.sweep_period = (v >> 4) & 0x7;
         self.sweep_negate = (v & 0x8) != 0;
         self.sweep_shift  = v & 0x7;
-        println!("write sweep period {} negate {} shift {}",
+        if Audio_Debug{
+            println!("write sweep period {} negate {} shift {}",
                 self.sweep_period,self.sweep_negate,self.sweep_shift);
+        }
     }
     pub fn write_lp(&mut self, v:u8){
         self.duty = (v >> 6) & 0x3;
         self.length = 63 - (v&0x3f);
-        println!("write length {} duty {}",
+        if Audio_Debug{
+            println!("write length {} duty {}",
                     self.length,self.duty);
+        }
     }
     pub fn write_envelope(&mut self, v:u8){
         self.envelope_volume = 
@@ -474,21 +494,27 @@ impl Square{
                 v&0x8 != 0;
         self.envelope_period = 
                 v&0x7;
-        println!("write envelope {} {} {}",self.envelope_volume,
-        self.envelope_add_mode,self.envelope_period);
+        if Audio_Debug{
+            println!("write envelope {} {} {}",self.envelope_volume,
+            self.envelope_add_mode,self.envelope_period);
+        }
     }
     pub fn write_frequency_lo(&mut self, v:u8){
         self.frequency &= 0xff00;
         self.frequency |= v as u16;
-        println!("write half frequency");
+        if Audio_Debug{
+            println!("write half frequency");
+        }
     }
     pub fn write_frequency_hi(&mut self, v:u8){
         self.frequency &= 0xff;
         self.frequency |= ((v&0x3) as u16)<<8;
         self.must_trigger = v&0x80 != 0;
         self.length_enable = v&0x40 != 0;
-        println!("write other half frequency {}{}{}",self.frequency,
-        self.must_trigger,self.length_enable);
+        if Audio_Debug{
+            println!("write other half frequency {}{}{}",self.frequency,
+                self.must_trigger,self.length_enable);
+        }
     }
 }
 
@@ -550,39 +576,57 @@ impl Audio{
         }
     }
     pub fn write_sound_mode1_sweep(&mut self,v:u8){
-        print!("SQUARE 1 ");
+        if Audio_Debug{
+            print!("SQUARE 1 ");
+        }
         self.square1.write_sweep(v);
     }
     pub fn write_sound_mode1_lp(&mut self, v:u8){
-        print!("SQUARE 1 ");
+        if Audio_Debug{
+            print!("SQUARE 1 ");
+        }
         self.square1.write_lp(v);
     }
     pub fn write_sound_mode1_envelope(&mut self, v:u8){
-        print!("SQUARE 1 ");
+        if Audio_Debug{
+            print!("SQUARE 1 ");
+        }
         self.square1.write_envelope(v);
     }
     pub fn write_sound_mode1_frequency_lo(&mut self, v:u8){
-        print!("SQUARE 1 ");
+        if Audio_Debug{
+            print!("SQUARE 1 ");
+        }
         self.square1.write_frequency_lo(v);
     }
     pub fn write_sound_mode1_frequency_hi(&mut self, v:u8){
-        print!("SQUARE 1 ");
+        if Audio_Debug{
+            print!("SQUARE 1 ");
+        }
         self.square1.write_frequency_hi(v);
     }
     pub fn write_sound_mode2_lp(&mut self, v:u8){
-        print!("SQUARE 2 ");
+         if Audio_Debug{
+           print!("SQUARE 2 ");
+         }
         self.square2.write_lp(v);
     }
     pub fn write_sound_mode2_envelope(&mut self, v:u8){
-        print!("SQUARE 2 ");
+        if Audio_Debug{
+            print!("SQUARE 2 ");
+        }
         self.square2.write_envelope(v);
     }
     pub fn write_sound_mode2_frequency_lo(&mut self, v:u8){
-        print!("SQUARE 2 ");
+        if Audio_Debug{
+            print!("SQUARE 2 ");
+        }
         self.square2.write_frequency_lo(v);
     }
     pub fn write_sound_mode2_frequency_hi(&mut self, v:u8){
-        print!("SQUARE 2 ");
+        if Audio_Debug{
+            print!("SQUARE 2 ");
+        }
         self.square2.write_frequency_hi(v);
     }
     pub fn write_stereo_volume(&mut self, v:u8){
@@ -590,8 +634,10 @@ impl Audio{
         self.right_enable =bit(v,3);
         self.volume_left = bits(v,4,3);
         self.volume_right= bits(v,0,3);
-        println!("setting volume left:{}:{} Right:{}:{}",self.left_enable,
-        self.volume_left,self.right_enable,self.volume_right);
+        if Audio_Debug{
+            println!("setting volume left:{}:{} Right:{}:{}",self.left_enable,
+               self.volume_left,self.right_enable,self.volume_right);
+        }
     }
 
     pub fn write_output_selection(&mut self,v:u8){
@@ -608,7 +654,9 @@ impl Audio{
     }
     pub fn write_power_flag(&mut self, v:u8){
         self.power = bit(v,7);
-        println!("setting audio power to {}",self.power);
+        if Audio_Debug{
+            println!("setting audio power to {}",self.power);
+        }
     }
 
     pub fn step(&mut self,clock :u32)->Interrupt{
@@ -654,7 +702,7 @@ impl Audio{
                 if self.sound1_to_left { o+= sample1 ;}
                 if self.sound2_to_left { o+= sample2 ;}
                 if self.sound3_to_left { o+= sample3 ;}
-     //           if self.sound4_to_left { o+= sample4 ;}
+                if self.sound4_to_left { o+= sample4 ;}
                 (((o * self.volume_left as f64)/16.0) as f32)
             };
             let out_right = {
@@ -662,10 +710,10 @@ impl Audio{
                 if self.sound1_to_right { o += sample1;}
                 if self.sound2_to_right { o += sample2;}
                 if self.sound3_to_right { o += sample3;}
-        //        if self.sound4_to_right { o += sample4;}
+                if self.sound4_to_right { o += sample4;}
                 (((o * self.volume_right as f64)/16.0) as f32)
             };
-            println!("samples {} {} {} {}",sample1,sample2,sample3,sample4);
+//            println!("samples {} {} {} {}",sample1,sample2,sample3,sample4);
             return Interrupt::AudioSample(out_left,out_right)
         }
         Interrupt::None

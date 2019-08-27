@@ -229,11 +229,13 @@ impl Video{
             let map_offset = map_offset as usize;
             
             let tile = self.vram[map_offset];
-            let (l,h) = self.read_tile(tile, tile_sub_line as u16);
+            //let (l,h) = self.read_tile(tile, tile_sub_line as u16);
             'inner: loop{
-                let l_bit = (l>>(7-tile_sub_column)) & 1;
-                let h_bit = (h>>(7-tile_sub_column)) & 1;
-                let color = l_bit + h_bit * 2;
+                //let l_bit = (l>>(7-tile_sub_column)) & 1;
+                //let h_bit = (h>>(7-tile_sub_column)) & 1;
+                //let color = l_bit + h_bit * 2;
+                let color = self.get_tile(tile, (tile_sub_line*8+tile_sub_column as u8) as u16);
+
                 self.back_buffer[
                     self.line as usize*160+screen_x] = 
                     self.background_palette[color as usize];
@@ -250,6 +252,15 @@ impl Video{
             }
         }
 
+    }
+
+    fn get_tile(& self, tile:u8, pixel:u16) -> u8{
+        if self.tile_set{
+            self.tiles[tile as usize][pixel as usize]
+        }else{
+            self.tiles[(tile^0x80) as usize+128][pixel as usize]
+
+        }
     }
 
     fn draw_bg(&mut self){
@@ -286,8 +297,7 @@ impl Video{
                 //let l_bit = (l>>(7-bg_tile_sub_column)) & 1;
                 //let h_bit = (h>>(7-bg_tile_sub_column)) & 1;
                 //let color = l_bit + h_bit * 2;
-                let color = self.tiles[tile as usize]
-                                [(bg_tile_sub_line*8+bg_tile_sub_column) as usize];
+                let color = self.get_tile(tile, bg_tile_sub_line*8+bg_tile_sub_column);
                 // println!("line {} x {}",ram.video.line,x);
                 self.back_buffer[
                     self.line as usize*160+x] = 
@@ -325,16 +335,18 @@ impl Video{
 //            println!("self.line {} f.y {} tile_line {}",self.line,f.y,tile_line);
             let tile_line = if f.x_flip { 7 - tile_line }else{tile_line};
             assert!(tile_line>=0 && tile_line<8);
-            let (l,h) = self.read_tile(f.tile,tile_line as u16);
+            //let (l,h) = self.read_tile(f.tile,tile_line as u16);
             let pal = if f.palette{  &self.sprite_palette_1
                              }else{  &self.sprite_palette_0
             };
             'inner: loop{
 //                println!("x {} f.x {}",x,f.x);
                 let tile_column = x+8-f.x;
-                let l_bit = (l>>(7-tile_column)) & 1;
-                let h_bit = (h>>(7-tile_column)) & 1;
-                let color = l_bit + h_bit * 2;
+                //let l_bit = (l>>(7-tile_column)) & 1;
+                //let h_bit = (h>>(7-tile_column)) & 1;
+                //let color = l_bit + h_bit * 2;
+                let color = self.get_tile(f.tile, (tile_line*8+tile_column as i16) as u16);
+
                 if color > 0{
                     let idx = self.line as usize * 160+x as usize;
                     
@@ -362,18 +374,31 @@ impl Video{
         if ram.video.enable_lcd
         {
             ram.video.line_clock += 1;
+            if ram.video.line<144{
+                if ram.video.enable_mode_0_hblank_check 
+                    && ram.video.line_clock>=64{
+                    ram.interrupt.add_interrupt(&Interrupt::LcdcStatus);
+                }
+            }
             if ram.video.line_clock >= 114{
                 ram.video.line_clock = 0;
                 ram.video.line += 1;
                 if ram.video.line == 145
                 {
+                    ram.interrupt.add_interrupt(&Interrupt::VBlank);
                     return Interrupt::VBlank
-                }
-                if ram.video.line >= 154
+                }else if ram.video.line >= 154
                 {//TODO shorter line 153
                     ram.video.line = 0;
                     ram.video.window_line = 0;
+                    if ram.video.enable_mode_2_oam_check{
+                        ram.interrupt.add_interrupt(&Interrupt::LcdcStatus);
+                    }
                     return Interrupt::VBlankEnd
+                }else if ram.video.line < 145{
+                    if ram.video.enable_mode_2_oam_check{
+                        ram.interrupt.add_interrupt(&Interrupt::LcdcStatus);
+                    }
                 }
             }else{
                 if ram.video.line_clock == 1 && ram.video.line < 144 {
@@ -444,6 +469,7 @@ impl Video{
     }
 
     pub fn write_scroll_y(&mut self,v:u8){
+        println!("write scroll y {}",v);
         self.scroll_y = v;
     }
 
@@ -452,6 +478,7 @@ impl Video{
     }
 
     pub fn write_scroll_x(&mut self,v:u8){
+        println!("write scroll x {}",v);
         self.scroll_x = v;
     }
 
@@ -484,6 +511,7 @@ impl Video{
         self.line_compare
     }
     pub fn write_line_compare(&mut self, v:u8){
+        println!("write line compare {}",v);
         self.line_compare = v;
     }
 

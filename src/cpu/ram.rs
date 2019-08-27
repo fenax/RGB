@@ -49,7 +49,7 @@ pub struct Ram{
     pub rom:[u8;0x4000],
     pub romswitch:[u8;0x4000],
     pub ramswitch:[u8;0x2000],
-    hram:[u8;0x7f],
+    pub hram:[u8;0x7f],
     oam:[u8;0xa0],
     booting:bool,
 }
@@ -219,7 +219,8 @@ impl Ram{
             0xfea0 ... 0xfeff | 0xff4c ... 0xff7f
                 => // empty, no IO
                 {
-                    0
+                    println!("should not read there {:04x} ",a);
+                    0xff
                 },
         }
     }
@@ -265,7 +266,7 @@ impl Ram{
                 self.hram[(a-0xff80) as usize] = v,
             0xffff => // Interupt
             {   
-                println!("write {} to IR", v ); 
+                println!("write {:02x} to IR", v ); 
                 self.interrupt.write_interrupt_enable(v);
             },
             0xff50 => // boot end
@@ -275,6 +276,7 @@ impl Ram{
             0xfea0 ... 0xfeff | 0xff4c ... 0xff4f | 0xff51 ... 0xff7f
                 => // empty, no IO
                 {
+                    println!("should not write there {:04x} {:02x}",a,v);
                 },
         }
       //  println!("wrote {:02x}:{} at {:04x}",v,v as char,a);
