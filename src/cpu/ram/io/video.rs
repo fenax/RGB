@@ -469,7 +469,7 @@ impl Video{
     }
 
     pub fn write_scroll_y(&mut self,v:u8){
-        println!("write scroll y {}",v);
+//        println!("write scroll y {}",v);
         self.scroll_y = v;
     }
 
@@ -478,7 +478,7 @@ impl Video{
     }
 
     pub fn write_scroll_x(&mut self,v:u8){
-        println!("write scroll x {}",v);
+//        println!("write scroll x {}",v);
         self.scroll_x = v;
     }
 
@@ -487,7 +487,7 @@ impl Video{
     }
 
     pub fn write_window_scroll_y(&mut self,v:u8){
-        println!("write window scroll y {}",v);
+//        println!("write window scroll y {}",v);
         self.window_scroll_y = v;
     }
 
@@ -496,7 +496,7 @@ impl Video{
     }
 
     pub fn write_window_scroll_x(&mut self,v:u8){
-        println!("write window scroll x {}",v);
+//        println!("write window scroll x {}",v);
         self.window_scroll_x = v;
     }
 

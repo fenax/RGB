@@ -6,7 +6,7 @@ pub fn instr_cb(ram: &mut Ram,
             reg: &mut Registers,
             alu: &mut Alu,
             op:  u8)
-    -> Option<u8>{
+    -> CpuState{
         let op_reg = op&0x7;
         let op_op = (op&0xc0)>>6;
         let op_bit = (op&0x38)>>3;
@@ -100,17 +100,17 @@ pub fn instr_cb(ram: &mut Ram,
             _ => panic!("impossible")
         };
         match op_reg {
-            0 => {reg.B = val; Some(1)},
-            1 => {reg.C = val; Some(1)},
-            2 => {reg.D = val; Some(1)},
-            3 => {reg.E = val; Some(1)},
-            4 => {reg.H = val; Some(1)},
-            5 => {reg.L = val; Some(1)},
+            0 => {reg.B = val; CpuState::Wait(1)},
+            1 => {reg.C = val; CpuState::Wait(1)},
+            2 => {reg.D = val; CpuState::Wait(1)},
+            3 => {reg.E = val; CpuState::Wait(1)},
+            4 => {reg.H = val; CpuState::Wait(1)},
+            5 => {reg.L = val; CpuState::Wait(1)},
             6 => {
                 ram.write8(reg.L,reg.H,val);
-                Some(3)
+                CpuState::Wait(3)
             },
-            7 => {reg.A = val; Some(1)},
+            7 => {reg.A = val; CpuState::Wait(1)},
             _ => panic!("impossible")
         }
     }

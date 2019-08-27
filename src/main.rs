@@ -114,7 +114,7 @@ impl Gameboy{
         let mut vblanks = std::vec::Vec::new();
         let mut apush   = std::vec::Vec::new();*/
         let mut file = File::create("out.pcm").ok().unwrap();
-
+        let mut halted = false;
         s.write(&buffer);
 
         loop {
@@ -123,19 +123,25 @@ impl Gameboy{
                 break;
             }*/
            clock = clock.wrapping_add(1);
-           if cpu_wait == 0{
-//                print!("\n{}{}",self.alu,self.reg);
+            if !halted{
+                if cpu_wait == 0{
+//                    print!("\n{}{}",self.alu,self.reg);
 
-                cpu_wait =
-                   instruct(&mut self.ram,
-                            &mut self.reg,
-                            &mut self.alu)
-                   .unwrap_or(0);
-              cpu::ram::io::InterruptManager::try_interrupt(&mut self.ram, &mut self.reg);
+                        match
+                        instruct(&mut self.ram,
+                                    &mut self.reg,
+                                    &mut self.alu){
+                                        CpuState::None => {},
+                                        CpuState::Wait(t) => cpu_wait = t,
+                                        CpuState::Halt => { halted = true;},
+                                        CpuState::Stop => {},
+                                    }
+                    cpu::ram::io::InterruptManager::try_interrupt(&mut self.ram, &mut self.reg);
 
-           }else{
-               cpu_wait -= 1;
-           }
+                }else{
+                    cpu_wait -= 1;
+                }
+            }
 
            //IO
            let i_joypad = ram::io::Joypad::step(&mut self.ram,clock);
@@ -146,12 +152,13 @@ impl Gameboy{
            let i_audio = self.ram.audio.step(clock);
            ram::io::InterruptManager::step(&mut self.ram,clock);
 
-
-           self.ram.interrupt.add_interrupt(&i_joypad);
-           self.ram.interrupt.add_interrupt(&i_serial);
-           self.ram.interrupt.add_interrupt(&i_timer);
-           self.ram.interrupt.add_interrupt(&i_dma);
-           self.ram.interrupt.add_interrupt(&i_video);
+            if  self.ram.interrupt.add_interrupt(&i_joypad) ||
+                self.ram.interrupt.add_interrupt(&i_serial) ||
+                self.ram.interrupt.add_interrupt(&i_timer)  ||
+                self.ram.interrupt.add_interrupt(&i_dma)    ||
+                self.ram.interrupt.add_interrupt(&i_video){
+                    halted = false;
+                }
             match i_audio{
                 cpu::ram::io::Interrupt::AudioSample(l,r) =>
                 {
@@ -251,6 +258,8 @@ impl Gameboy{
     }
 }
 fn main() -> io::Result<()>{
+    let args: Vec<String> = std::env::args().collect();
+
     let (to_window, inbox_window) = mpsc::channel();
     let (to_emulator, inbox_emulator) = mpsc::channel();
     let spec = sample::Spec {
@@ -277,7 +286,7 @@ fn main() -> io::Result<()>{
         None
     ).unwrap();
     let mut gb = Gameboy::origin();
-    let mut f = File::open("test.gb")?; 
+    let mut f = File::open(&args[1])?; 
            let (mut ctx, mut event_loop) = 
         ContextBuilder::new("Rust Game Boy Emulator", "Awosomotter")
             .window_mode(conf::WindowMode::default().dimensions(512.0,512.0))

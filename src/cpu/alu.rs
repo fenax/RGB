@@ -49,27 +49,27 @@ impl Alu{
         self.Fhalf = h;
         self.Fcarry = c;
     }
-    pub fn and(&mut self,a:&mut u8,b:u8)->Option<u8>{
+    pub fn and(&mut self,a:&mut u8,b:u8)->CpuState{
         *a = *a & b;
         self.set_flags(*a==0, false,true,false);
-        None
+        CpuState::None
     }
-    pub fn or(&mut self,a:&mut u8,b:u8)->Option<u8>{
+    pub fn or(&mut self,a:&mut u8,b:u8)->CpuState{
         *a = *a | b;
         self.set_flags(*a==0,false,false,false);
-        None
+        CpuState::None
     }
-    pub fn xor(&mut self,a:&mut u8,b:u8)->Option<u8>{
+    pub fn xor(&mut self,a:&mut u8,b:u8)->CpuState{
         *a = *a ^ b;
         self.set_flags(*a==0,false,false,false);
-        None
+        CpuState::None
     }
-    pub fn add16(&mut self,l:&mut u8,h:&mut u8,b:u16)->Option<u8>{
+    pub fn add16(&mut self,l:&mut u8,h:&mut u8,b:u16)->CpuState{
         let HL = u8tou16(*l,*h);
         let (rl,rh) = u16tou8(self.add16_(HL,b));
         *h = rh;
         *l = rl;
-        Some(1)
+        CpuState::Wait(1)
     }
     pub fn add16_(&mut self,a: u16, b: u16)->u16{
         self.Fhalf = ((a&0xfff) + (b&0xfff))>0xfff;
@@ -78,16 +78,16 @@ impl Alu{
         self.Fcarry = c;
         r
     }
-    pub fn add(&mut self,a:&mut u8,b:u8)->Option<u8>{
+    pub fn add(&mut self,a:&mut u8,b:u8)->CpuState{
         self.Fhalf = ((*a&0xf) + (b&0xf))>0xf;
         self.Fsub = false;
         let (r,c) = a.overflowing_add(b);
         self.Fzero = r==0;
         self.Fcarry = c;
         *a = r;
-        None
+        CpuState::None
     }
-    pub fn sub16(&mut self,l:&mut u8,h:&mut u8,b:u8)->Option<u8>{
+    pub fn sub16(&mut self,l:&mut u8,h:&mut u8,b:u8)->CpuState{
         let HL = u8tou16(*l,*h);
         self.Fhalf = HL&0xfff < (b as u16)&0xfff;
         self.Fsub = true;
@@ -97,26 +97,26 @@ impl Alu{
         let (rl,rh) = u16tou8(r);
         *h=rh;
         *l=rl;
-        Some(1)
+        CpuState::Wait(1)
     }
-    pub fn sub(&mut self,a:&mut u8,b:u8)->Option<u8>{
+    pub fn sub(&mut self,a:&mut u8,b:u8)->CpuState{
         self.Fhalf = *a & 0xf < b & 0xf;
         self.Fsub = true;
         let (r,c) = a.overflowing_sub(b);
         self.Fzero = r==0;
         self.Fcarry = c;
         *a = r;
-        None
+        CpuState::None
     }
-    pub fn cp(&mut self,a: u8,b:u8)->Option<u8>{
+    pub fn cp(&mut self,a: u8,b:u8)->CpuState{
         self.Fhalf = a & 0xf < b&0xf;
         self.Fsub = true;
         let (r,c) = a.overflowing_sub(b);
         self.Fzero = r==0;
         self.Fcarry = c;
-        None
+        CpuState::None
     }
-    pub fn adc(&mut self,a:&mut u8,b:u8)->Option<u8>{
+    pub fn adc(&mut self,a:&mut u8,b:u8)->CpuState{
         if self.Fcarry {
             self.Fhalf = ((*a&0xf) + ((b&0xf) + 1))>0xf;
             self.Fsub = false;
@@ -125,10 +125,10 @@ impl Alu{
             self.Fzero = r==0;
             self.Fcarry = c1 || c2;
             *a = r;
-            None
+            CpuState::None
         }else{ self.add(a,b) }
     }
-    pub fn sbc(&mut self,a:&mut u8,b:u8)->Option<u8>{
+    pub fn sbc(&mut self,a:&mut u8,b:u8)->CpuState{
         if self.Fcarry {
             self.Fhalf = *a&0xf <= b&0xf;
             self.Fsub = true;
@@ -137,38 +137,38 @@ impl Alu{
             self.Fzero = r==0;
             self.Fcarry = c1 || c2;
             *a = r;
-            None
+            CpuState::None
         }else{ self.sub(a,b) }
     }
-    pub fn inc(&mut self,a:&mut u8)->Option<u8>{
+    pub fn inc(&mut self,a:&mut u8)->CpuState{
         *a = a.wrapping_add(1);
         self.Fhalf = (*a&0xf) == 0;
         self.Fsub = false;
         self.Fzero = *a==0;
-        None
+        CpuState::None
     }
-    pub fn dec(&mut self,a:&mut u8)->Option<u8>{
+    pub fn dec(&mut self,a:&mut u8)->CpuState{
         *a = a.wrapping_sub(1);
         self.Fhalf = (*a&0xf) == 0xf;
         self.Fsub = true;
         self.Fzero = *a==0;
-        None
+        CpuState::None
     }
-    pub fn inc16(& self,l:&mut u8,h:&mut u8)->Option<u8>{
+    pub fn inc16(& self,l:&mut u8,h:&mut u8)->CpuState{
         let mut r = u8tou16(*l,*h);
         r = r.wrapping_add(1);
         let (rl,rh) = u16tou8(r);
         *l = rl;
         *h = rh;
-        Some(1)
+        CpuState::Wait(1)
     }
-    pub fn dec16(& self,l:&mut u8,h:&mut u8)->Option<u8>{
+    pub fn dec16(& self,l:&mut u8,h:&mut u8)->CpuState{
         let mut r = u8tou16(*l,*h);
         r = r.wrapping_sub(1);
         let (rl,rh) = u16tou8(r);
         *l = rl;
         *h = rh;
-        Some(1)
+        CpuState::Wait(1)
     }    
 
 }

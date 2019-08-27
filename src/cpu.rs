@@ -21,8 +21,16 @@ pub fn u8toi16(v:u8) -> u16{
     v as u16
 }
 
+pub enum CpuState{
+    None,
+    Wait(u8),
+    Halt,
+    Stop,
+}
+
+
 pub fn instruct(ram : &mut Ram, reg : &mut Registers, alu: &mut Alu)
-->Option<u8>{
+->CpuState{
     fn read_op(ram:&mut Ram, reg:&mut Registers) -> u8{
         let r = ram.read(reg.PC);
 //        print!("{:02x} ",r);
@@ -33,284 +41,284 @@ pub fn instruct(ram : &mut Ram, reg : &mut Registers, alu: &mut Alu)
     match i {
         //NOP LD A,A LD L,L LD H,H LD E,E LD D,D LD C,C LD B,B
         0x00 | 0x7f | 0x6d | 0x64 | 0x5b | 0x52 | 0x49 | 0x40 => {
-            None
+            CpuState::None
         },
         //LD B,C
         0x41 => {
             reg.B = reg.C;
-            None
+            CpuState::None
         },
         //LD B,D
         0x42 => {
             reg.B = reg.D;
-            None
+            CpuState::None
         },
         //LD B,E
         0x43 => {
             reg.B = reg.E;
-            None
+            CpuState::None
         },
         //LD B,H
         0x44 => {
             reg.B = reg.H;
-            None
+            CpuState::None
         },
         //LD B,L
         0x45 => {
             reg.B = reg.L;
-            None
+            CpuState::None
         },
         //LD B,A
         0x47 => {
             reg.B = reg.A;
-            None
+            CpuState::None
         },
         //LD C,B
         0x48 => {
             reg.C = reg.B;
-            None
+            CpuState::None
         },
         //LD C,D
         0x4a => {
             reg.C = reg.D;
-            None
+            CpuState::None
         },
         //LD C,E
         0x4b => {
             reg.C = reg.E;
-            None
+            CpuState::None
         },
         //LD C,H
         0x4c => {
             reg.C = reg.H;
-            None
+            CpuState::None
         },
         //LD C,L
         0x4d => {
             reg.C = reg.L;
-            None
+            CpuState::None
         },
         //LD C,A
         0x4f => {
             reg.C = reg.A;
-            None
+            CpuState::None
         },
 
         //LD D,B
         0x50 => {
             reg.D = reg.B;
-            None
+            CpuState::None
         },
         //LD D,C
         0x51 => {
             reg.D = reg.C;
-            None
+            CpuState::None
         },
         //LD D,E
         0x53 => {
             reg.D = reg.E;
-            None
+            CpuState::None
         },
         //LD D,H
         0x54 => {
             reg.D = reg.H;
-            None
+            CpuState::None
         },
         //LD D,L
         0x55 => {
             reg.D = reg.L;
-            None
+            CpuState::None
         },
         //LD D,A
         0x57 => {
             reg.D = reg.A;
-            None
+            CpuState::None
         },
 
         //LD E,B
         0x58 => {
             reg.E = reg.B;
-            None
+            CpuState::None
         },
         //LD E,C
         0x59 => {
             reg.E = reg.C;
-            None
+            CpuState::None
         },
         //LD E,D
         0x5a => {
             reg.E = reg.D;
-            None
+            CpuState::None
         },
         //LD E,H
         0x5c => {
             reg.E = reg.H;
-            None
+            CpuState::None
         },
         //LD E,L
         0x5d => {
             reg.E = reg.L;
-            None
+            CpuState::None
         },
         //LD E,A
         0x5f => {
             reg.E = reg.A;
-            None
+            CpuState::None
         },
 
         //LD H,B
         0x60 => {
             reg.H = reg.B;
-            None
+            CpuState::None
         },
         //LD H,C
         0x61 => {
             reg.H = reg.C;
-            None
+            CpuState::None
         },
         //LD H,D
         0x62 => {
             reg.H = reg.D;
-            None
+            CpuState::None
         },
         //LD H,E
         0x63 => {
             reg.H = reg.E;
-            None
+            CpuState::None
         },
         //LD H,L
         0x65 => {
             reg.H = reg.L;
-            None
+            CpuState::None
         },
         //LD H,A
         0x67 => {
             reg.H = reg.A;
-            None
+            CpuState::None
         },
 
         //LD L,B
         0x68 => {
             reg.L = reg.B;
-            None
+            CpuState::None
         },
         //LD L,C
         0x69 => {
             reg.L = reg.C;
-            None
+            CpuState::None
         },
         //LD L,D
         0x6a => {
             reg.L = reg.D;
-            None
+            CpuState::None
         },
         //LD L,E
         0x6b => {
             reg.L = reg.E;
-            None
+            CpuState::None
         },
         //LD L,H
         0x6c => {
             reg.L = reg.H;
-            None
+            CpuState::None
         },
         //LD L,A
         0x6f => {
             reg.L = reg.A;
-            None
+            CpuState::None
         },
 
         //LD A,B
         0x78 => {
             reg.A = reg.B;
-            None
+            CpuState::None
         },
         //LD A,C
         0x79 => {
             reg.A = reg.C;
-            None
+            CpuState::None
         },
         //LD A,D
         0x7a => {
             reg.A = reg.D;
-            None
+            CpuState::None
         },
         //LD A,E
         0x7b => {
             reg.A = reg.E;
-            None
+            CpuState::None
         },
         //LD A,H
         0x7c => {
             reg.A = reg.H;
-            None
+            CpuState::None
         },
         //LD A,L
         0x7d => {
             reg.A = reg.L;
-            None
+            CpuState::None
         },
 
         //LD BC,d16
         0x01 => {
             reg.C = read_op(ram,reg);
             reg.B = read_op(ram,reg);
-            Some(2)
+            CpuState::Wait(2)
         },
         //LD DE,d16
         0x11 => {
             reg.E = read_op(ram,reg);
             reg.D = read_op(ram,reg);
-            Some(2)
+            CpuState::Wait(2)
         },
         //LD HL,d16
         0x21 => {
             reg.L = read_op(ram,reg);
             reg.H = read_op(ram,reg);
-            Some(2)
+            CpuState::Wait(2)
         },
         //LD SP,d16
         0x31 => {
             let l = read_op(ram,reg);
             let h = read_op(ram,reg);
             reg.SP = u8tou16(l,h);
-            Some(2)
+            CpuState::Wait(2)
         },
 
         //LD B,d8
         0x06 => {
             reg.B = read_op(ram,reg);
-            Some(1)
+            CpuState::Wait(1)
         },
         //LD C,d8
         0x0e => {
             reg.C = read_op(ram,reg);
-            Some(1)
+            CpuState::Wait(1)
         },
         //LD D,d8
         0x16 => {
             reg.D = read_op(ram,reg);
-            Some(1)
+            CpuState::Wait(1)
         },
         //LD E,d8
         0x1e => {
             reg.E = read_op(ram,reg);
-            Some(1)
+            CpuState::Wait(1)
         },
         //LD H,d8
         0x26 => {
             reg.H = read_op(ram,reg);
-            Some(1)
+            CpuState::Wait(1)
         },
         //LD L,d8
         0x2e => {
             reg.L = read_op(ram,reg);
-            Some(1)
+            CpuState::Wait(1)
         },
         //LD A,d8
         0x3e => {
             reg.A = read_op(ram,reg);
-            Some(1)
+            CpuState::Wait(1)
         },
 
         //LD (a16),SP
@@ -319,130 +327,130 @@ pub fn instruct(ram : &mut Ram, reg : &mut Registers, alu: &mut Alu)
             let h = read_op(ram,reg);
             let (spl,sph) = u16tou8(reg.SP);
             ram.write88(l,h,(spl,sph));
-            Some(4)
+            CpuState::Wait(4)
         },
         //LD (HL),d8
         0x36 => {
             let d = read_op(ram,reg);
             ram.write8(reg.L,reg.H,d); 
-            Some(2)
+            CpuState::Wait(2)
         },
 
         //LD B,(HL)
         0x46 => {
             reg.B = ram.read8(reg.L,reg.H);
-            Some(1)
+            CpuState::Wait(1)
         },
         //LD C,(HL)
         0x4e => {
             reg.C = ram.read8(reg.L,reg.H);
-            Some(1)
+            CpuState::Wait(1)
         },
         //LD D,(HL)
         0x56 => {
             reg.D = ram.read8(reg.L,reg.H);
-            Some(1)
+            CpuState::Wait(1)
         },
         //LD E,(HL)
         0x5e => {
             reg.E = ram.read8(reg.L,reg.H);
-            Some(1)
+            CpuState::Wait(1)
         },
         //LD H,(HL)
         0x66 => {
             reg.H = ram.read8(reg.L,reg.H);
-            Some(1)
+            CpuState::Wait(1)
         },
         //LD L,(HL)
         0x6e => {
             reg.L = ram.read8(reg.L,reg.H);
-            Some(1)
+            CpuState::Wait(1)
         },
         //LD A,(HL)
         0x7e => {
             reg.A = ram.read8(reg.L,reg.H);
-            Some(1)
+            CpuState::Wait(1)
         },
         //LD A,(HL+)
         0x2a => {
             reg.A = ram.read8(reg.L,reg.H);
             alu.inc16(&mut reg.L,&mut reg.H);
-            Some(1)
+            CpuState::Wait(1)
         },
         //LD A,(HL-)
         0x3a => {
             reg.A = ram.read8(reg.L,reg.H);
             alu.dec16(&mut reg.L,&mut reg.H);
-            Some(1)
+            CpuState::Wait(1)
         },
         //LD A,(BC)
         0x0a => {
             reg.A = ram.read8(reg.C,reg.B);
-            Some(1)
+            CpuState::Wait(1)
         },
         //LD A,(DE)
         0x1a => {
             reg.A = ram.read8(reg.E,reg.D);
-            Some(1)
+            CpuState::Wait(1)
         },
 
 
         //LD (HL),B
         0x70 => {
             ram.write8(reg.L,reg.H,reg.B);
-            Some(1)
+            CpuState::Wait(1)
         },
         //LD (HL),C
         0x71 => {
             ram.write8(reg.L,reg.H,reg.C);
-            Some(1)
+            CpuState::Wait(1)
         },
         //LD (HL),D
         0x72 => {
             ram.write8(reg.L,reg.H,reg.D);
-            Some(1)
+            CpuState::Wait(1)
         },
         //LD (HL),E
         0x73 => {
             ram.write8(reg.L,reg.H,reg.E);
-            Some(1)
+            CpuState::Wait(1)
         },
         //LD (HL),H
         0x74 => {
             ram.write8(reg.L,reg.H,reg.H);
-            Some(1)
+            CpuState::Wait(1)
         },
         //LD (HL),L
         0x75 => {
             ram.write8(reg.L,reg.H,reg.L);
-            Some(1)
+            CpuState::Wait(1)
         },
         //LD (HL),A
         0x77 => {
             ram.write8(reg.L,reg.H,reg.A);
-            Some(1)
+            CpuState::Wait(1)
         },
         //LD (HL+),A
         0x22 => {
             ram.write8(reg.L,reg.H,reg.A);
             alu.inc16(&mut reg.L, &mut reg.H);
-            Some(1)
+            CpuState::Wait(1)
         },
         //LD (HL-),A
         0x32 => {
             ram.write8(reg.L,reg.H,reg.A);
             alu.dec16(&mut reg.L, &mut reg.H);
-            Some(1)
+            CpuState::Wait(1)
         },
         //LD (BC),A
         0x02 => {
             ram.write8(reg.C,reg.B,reg.A);
-            Some(1)
+            CpuState::Wait(1)
         },
         //LD (DE),A
         0x12 => {
             ram.write8(reg.E,reg.D,reg.A);
-            Some(1)
+            CpuState::Wait(1)
         },
 
 
@@ -485,7 +493,7 @@ pub fn instruct(ram : &mut Ram, reg : &mut Registers, alu: &mut Alu)
         //INC SP
         0x33 => {
             reg.SP = reg.SP.wrapping_add( 1);
-            Some(1)
+            CpuState::Wait(1)
         },
         //DEC BC
         0x0b => alu.dec16(&mut reg.C,&mut reg.B),
@@ -496,7 +504,7 @@ pub fn instruct(ram : &mut Ram, reg : &mut Registers, alu: &mut Alu)
         //DEC SP
         0x3b => {
             reg.SP = reg.SP.wrapping_sub( 1);
-            Some(1)
+            CpuState::Wait(1)
         },
 
         //INC (HL)
@@ -504,14 +512,14 @@ pub fn instruct(ram : &mut Ram, reg : &mut Registers, alu: &mut Alu)
             let mut v = ram.read8(reg.L,reg.H);
             alu.inc(&mut v);
             ram.write8(reg.L,reg.H,v);
-            Some(2)
+            CpuState::Wait(2)
         }
         //DEC (HL)
         0x35 => {
             let mut v = ram.read8(reg.L,reg.H);
             alu.dec(&mut v);
             ram.write8(reg.L,reg.H,v);
-            Some(2)
+            CpuState::Wait(2)
         }
 
 
@@ -638,7 +646,7 @@ pub fn instruct(ram : &mut Ram, reg : &mut Registers, alu: &mut Alu)
             alu.Fsub = false;
             reg.SP = reg.SP.wrapping_add(bb);
             alu.Fzero = false;
-            Some(3)
+            CpuState::Wait(3)
         },
 
 
@@ -651,7 +659,7 @@ pub fn instruct(ram : &mut Ram, reg : &mut Registers, alu: &mut Alu)
             alu.Fzero = false;
             alu.Fsub = false;
             alu.Fhalf = false;
-            None
+            CpuState::None
         },
         //RRCA
         0x0f => {
@@ -662,7 +670,7 @@ pub fn instruct(ram : &mut Ram, reg : &mut Registers, alu: &mut Alu)
             alu.Fzero = false;
             alu.Fsub = false;
             alu.Fhalf = false;
-            None
+            CpuState::None
 
         },
         //RLA
@@ -674,7 +682,7 @@ pub fn instruct(ram : &mut Ram, reg : &mut Registers, alu: &mut Alu)
             alu.Fzero = false;
             alu.Fsub = false;
             alu.Fhalf = false;
-            None
+            CpuState::None
         },
         //RRA
         0x1f => {
@@ -685,7 +693,7 @@ pub fn instruct(ram : &mut Ram, reg : &mut Registers, alu: &mut Alu)
             alu.Fzero = false;
             alu.Fsub = false;
             alu.Fhalf = false;
-            None
+            CpuState::None
         },
         //DAA
         0x27 => {
@@ -736,14 +744,14 @@ pub fn instruct(ram : &mut Ram, reg : &mut Registers, alu: &mut Alu)
 		}
             alu.Fzero = reg.A == 0;
             alu.Fhalf = false;
-            None
+            CpuState::None
         },
         //CPL
         0x2f => {
             reg.A = !reg.A;
             alu.Fsub = true;
             alu.Fhalf = true;
-            None
+            CpuState::None
         },
 
         //SCF set carry flag
@@ -751,14 +759,14 @@ pub fn instruct(ram : &mut Ram, reg : &mut Registers, alu: &mut Alu)
             alu.Fcarry = true;
             alu.Fsub = false;
             alu.Fhalf = false;
-            None
+            CpuState::None
         },
         //CCF complement not clear carry flag
         0x3f => {
             alu.Fcarry = !alu.Fcarry;
             alu.Fsub = false;
             alu.Fhalf = false;
-            None
+            CpuState::None
         },
 
         
@@ -838,31 +846,31 @@ pub fn instruct(ram : &mut Ram, reg : &mut Registers, alu: &mut Alu)
         0xe0 => {
             let arg1 = read_op(ram,reg);
             ram.write8(arg1,0xff,reg.A);
-            Some(2)
+            CpuState::Wait(2)
         },
         //LD (C),A
         0xe2 => {
             ram.write8(reg.C,0xff,reg.A);
-            Some(1)
+            CpuState::Wait(1)
         },
         //LD (a16),A
         0xea => {
             let l = read_op(ram,reg);
             let h = read_op(ram,reg);
             ram.write8(l,h,reg.A);
-            Some(3)
+            CpuState::Wait(3)
         },
 
         //LDH a,(a8)
         0xf0 => {
             let arg1 = read_op(ram,reg);
             reg.A = ram.read8(arg1,0xff);
-            Some(2)
+            CpuState::Wait(2)
         },
         //LD A,(C)
         0xf2 => {
             reg.A = ram.read8(reg.C,0xff);
-            Some(1)
+            CpuState::Wait(1)
         },
 
         //LD HL,SP+r8
@@ -882,19 +890,19 @@ pub fn instruct(ram : &mut Ram, reg : &mut Registers, alu: &mut Alu)
             alu.Fzero = false;
 //            reg.L = ram.read(r);
 //            reg.H = ram.read(r.wrapping_add(1));
-            Some(3)
+            CpuState::Wait(3)
         },
         //LD SP,HL
         0xf9 => {
             reg.SP = u8tou16(reg.L,reg.H);
-            Some(1)
+            CpuState::Wait(1)
         },
         //LD A,(a16)
         0xfa => {
             let l = read_op(ram,reg);
             let h = read_op(ram,reg);
             reg.A = ram.read8(l,h);
-            Some(3)
+            CpuState::Wait(3)
         },
 
         //POP BC
@@ -902,28 +910,28 @@ pub fn instruct(ram : &mut Ram, reg : &mut Registers, alu: &mut Alu)
             reg.C = ram.read(reg.SP);
             reg.B = ram.read(reg.SP.wrapping_add(1));
             reg.SP +=2;
-            Some(3)
+            CpuState::Wait(3)
         },
         //POP DE
         0xd1 =>{
             reg.E = ram.read(reg.SP);
             reg.D = ram.read(reg.SP.wrapping_add(1));
             reg.SP += 2;
-            Some(3)
+            CpuState::Wait(3)
         },
         //POP HL
         0xe1 => {
             reg.L = ram.read(reg.SP);
             reg.H = ram.read(reg.SP.wrapping_add(1));
             reg.SP += 2;
-            Some(3)
+            CpuState::Wait(3)
         },
         //POP AF
         0xf1 => {
             alu.set_f(ram.read(reg.SP));
             reg.A   = ram.read(reg.SP.wrapping_add(1));
             reg.SP += 2;
-            Some(3)
+            CpuState::Wait(3)
         },
 
         //PUSH BC
@@ -931,71 +939,75 @@ pub fn instruct(ram : &mut Ram, reg : &mut Registers, alu: &mut Alu)
             reg.SP -= 2;
             ram.write(reg.SP,reg.C);
             ram.write(reg.SP+1,reg.B);
-            Some(3)
+            CpuState::Wait(3)
         },
         //PUSH DE
         0xd5 => {
             reg.SP -= 2;
             ram.write(reg.SP,reg.E);
             ram.write(reg.SP+1,reg.D);
-            Some(3)
+            CpuState::Wait(3)
         },
         //PUSH HL
         0xe5 => {
             reg.SP -= 2;
             ram.write(reg.SP,reg.L);
             ram.write(reg.SP+1,reg.H);
-            Some(3)
+            CpuState::Wait(3)
         },
         //PUSH AF
         0xf5 => {
             reg.SP -= 2;
             ram.write(reg.SP,alu.get_f());
             ram.write(reg.SP+1,reg.A);
-            Some(3)
+            CpuState::Wait(3)
         },
 
         //JR r8
         0x18 => {
             let arg1 = u8toi16(read_op(ram,reg));
             reg.PC = reg.PC.wrapping_add(arg1);
-            Some(1)
+            CpuState::Wait(2)
         },
         //JR NZ,r8
         0x20 => {
             let arg1 = u8toi16(read_op(ram,reg));
             if !alu.Fzero {
-                reg.PC =
-                    reg.PC.wrapping_add(arg1);
+                reg.PC = reg.PC.wrapping_add(arg1);
+                CpuState::Wait(2)
+            }else{
+                CpuState::Wait(1)
             }
-            Some(1)
         },
         //JR Z,r8
         0x28 =>{
             let arg1 = u8toi16(read_op(ram,reg));
             if alu.Fzero {
-                reg.PC =
-                    reg.PC.wrapping_add(arg1);
+                reg.PC = reg.PC.wrapping_add(arg1);
+                CpuState::Wait(2)
+            }else{
+                CpuState::Wait(1)
             }
-            Some(1)
         },
         //JR NC,r8
         0x30 => {
             let arg1 = u8toi16(read_op(ram,reg));
             if !alu.Fcarry{
-                reg.PC =
-                    reg.PC.wrapping_add(arg1);
+                reg.PC = reg.PC.wrapping_add(arg1);
+                CpuState::Wait(2)
+            }else{
+                CpuState::Wait(1)
             }
-            Some(1)
         },
         //JR C,r8
         0x38 => {
             let arg1 = u8toi16(read_op(ram,reg));
             if alu.Fcarry {
-                reg.PC =
-                    reg.PC.wrapping_add(arg1);
+                reg.PC = reg.PC.wrapping_add(arg1);
+                CpuState::Wait(2)
+            }else{
+                CpuState::Wait(1)
             }
-            Some(1)
         },
 
         //JP NZ,a16
@@ -1004,15 +1016,18 @@ pub fn instruct(ram : &mut Ram, reg : &mut Registers, alu: &mut Alu)
             let arg2 = read_op(ram,reg);
             if !alu.Fzero{
                 reg.PC = u8tou16(arg1,arg2);
+                CpuState::Wait(3)
+            }else{
+                CpuState::Wait(2)
             }
-            Some(3)
+
         },
         //JP a16
         0xc3 => {
             let arg1 = read_op(ram,reg);
             let arg2 = read_op(ram,reg);
             reg.PC = u8tou16(arg1,arg2);
-            Some(3)
+            CpuState::Wait(3)
         },
         //JP Z,a16
         0xca => {
@@ -1020,8 +1035,10 @@ pub fn instruct(ram : &mut Ram, reg : &mut Registers, alu: &mut Alu)
             let arg2 = read_op(ram,reg);
             if alu.Fzero{
                 reg.PC = u8tou16(arg1,arg2);
+                CpuState::Wait(3)
+            }else{
+                CpuState::Wait(2)
             }
-            Some(3)
         },
         //JP NC,a16
         0xd2 => {
@@ -1029,8 +1046,10 @@ pub fn instruct(ram : &mut Ram, reg : &mut Registers, alu: &mut Alu)
             let arg2 = read_op(ram,reg);
             if !alu.Fcarry {
                 reg.PC = u8tou16(arg1,arg2);
+                CpuState::Wait(3)
+            }else{
+                CpuState::Wait(2)
             }
-            Some(3)
         },
         //JP C,a16
         0xda => {
@@ -1038,13 +1057,15 @@ pub fn instruct(ram : &mut Ram, reg : &mut Registers, alu: &mut Alu)
             let arg2 = read_op(ram,reg);
             if alu.Fcarry {
                 reg.PC = u8tou16(arg1,arg2);
+                CpuState::Wait(3)
+            }else{
+                CpuState::Wait(2)
             }
-            Some(3)
         },
         //JP (HL)
         0xe9 => {
             reg.PC = u8tou16(reg.L,reg.H);
-            Some(3)
+            CpuState::Wait(3)
         },
 
         //CALL NZ,a16
@@ -1054,8 +1075,10 @@ pub fn instruct(ram : &mut Ram, reg : &mut Registers, alu: &mut Alu)
             if !alu.Fzero {
                 ram.push16(&mut reg.SP, reg.PC);
                 reg.PC = u8tou16(arg1, arg2);
+                CpuState::Wait(7)
+            }else{
+                CpuState::Wait(3)
             }
-            Some(3)
         },
         //CALL Z,a16
         0xcc =>{
@@ -1064,8 +1087,10 @@ pub fn instruct(ram : &mut Ram, reg : &mut Registers, alu: &mut Alu)
             if alu.Fzero {
                 ram.push16(&mut reg.SP, reg.PC);
                 reg.PC = u8tou16(arg1, arg2);
+                CpuState::Wait(7)
+            }else{
+                CpuState::Wait(3)
             }
-            Some(3)
         } ,
         //CALL a16
         0xcd =>{
@@ -1074,7 +1099,7 @@ pub fn instruct(ram : &mut Ram, reg : &mut Registers, alu: &mut Alu)
             //let (pcl,pch) = u16tou8(reg.PC);
             ram.push16(&mut reg.SP, reg.PC);
             reg.PC = u8tou16(arg1, arg2);
-            Some(3)
+            CpuState::Wait(7)
         } ,
         //CALL NC,a16
         0xd4 =>{
@@ -1083,8 +1108,10 @@ pub fn instruct(ram : &mut Ram, reg : &mut Registers, alu: &mut Alu)
             if !alu.Fcarry{
                 ram.push16(&mut reg.SP, reg.PC);
                 reg.PC = u8tou16(arg1, arg2);
+                CpuState::Wait(7)
+            }else{
+                CpuState::Wait(3)
             }
-            Some(3)
         } ,
         //CALL C,a16
         0xdc =>{
@@ -1093,91 +1120,101 @@ pub fn instruct(ram : &mut Ram, reg : &mut Registers, alu: &mut Alu)
             if alu.Fcarry{
                 ram.push16(&mut reg.SP, reg.PC);
                 reg.PC = u8tou16(arg1, arg2);
+                CpuState::Wait(7)
+            }else{
+                CpuState::Wait(3)
             }
-            Some(3)
         } ,
 
         //RST 00H
         0xc7 => {
             ram.push16(&mut reg.SP,reg.PC);
             reg.PC = 0x0000;
-            Some(7)
+            CpuState::Wait(3)
         },
         //RST 08H
         0xcf =>  {
             ram.push16(&mut reg.SP,reg.PC);
             reg.PC = 0x0008;
-            Some(7)
+            CpuState::Wait(3)
         },
         //RST 10H
         0xd7 => {
             ram.push16(&mut reg.SP,reg.PC);
             reg.PC = 0x0010;
-            Some(7)
+            CpuState::Wait(3)
         } ,
         //RST 18H
         0xdf => {
             ram.push16(&mut reg.SP,reg.PC);
             reg.PC = 0x0018;
-            Some(7)
+            CpuState::Wait(3)
         } ,
         //RST 20H
         0xe7 => {
             ram.push16(&mut reg.SP,reg.PC);
             reg.PC = 0x0020;
-            Some(7)
+            CpuState::Wait(3)
         } ,
         //RST 28H
         0xef => {
             ram.push16(&mut reg.SP,reg.PC);
             reg.PC = 0x0028;
-            Some(7)
+            CpuState::Wait(3)
         } ,
         //RST 30H
         0xf7 => {
             ram.push16(&mut reg.SP,reg.PC);
             reg.PC = 0x0030;
-            Some(7)
+            CpuState::Wait(3)
         } ,
         //RST 38H
         0xff => {
             ram.push16(&mut reg.SP,reg.PC);
             reg.PC = 0x0038;
-            Some(7)
+            CpuState::Wait(3)
         } ,
 
         //RET NZ
         0xc0 => {
             if !alu.Fzero{
                 reg.PC = ram.pop16(&mut reg.SP);
+                CpuState::Wait(4)
+            }else{
+                CpuState::Wait(1)
             }
-            Some(1)
         },
         //RET Z
         0xc8 => {
             if alu.Fzero{ 
                 reg.PC = ram.pop16(&mut reg.SP);
+                CpuState::Wait(4)
+            }else{
+                CpuState::Wait(1)
             }
-            Some(1)
         },
         //RET
         0xc9 => {
             reg.PC = ram.pop16(&mut reg.SP);
-            Some(1)
+            CpuState::Wait(1)
         },
         //RET NC
         0xd0 => {
             if !alu.Fcarry{
                 reg.PC = ram.pop16(&mut reg.SP);
+                CpuState::Wait(4)
+            }else{
+                CpuState::Wait(1)
             }
-            Some(1)
         },
         //RET C
         0xd8 => {
             if alu.Fcarry{
                 reg.PC = ram.pop16(&mut reg.SP);
+                CpuState::Wait(4)
+            }else{
+                CpuState::Wait(1)
             }
-            Some(1)
         },
         //RETI
         0xd9 => {
@@ -1185,31 +1222,31 @@ pub fn instruct(ram : &mut Ram, reg : &mut Registers, alu: &mut Alu)
             ram.interrupt.master_enable = true;
 //            println!("RETI PC{:x} SP{:x}",reg.PC,reg.SP);
             //TODO should interrupt be enabled directly or like DI and EI ?
-            Some(1)
+            CpuState::Wait(1)
         },
 
         //DI
         0xf3 => {
             ram.interrupt.order_disable = false;
             println!("DI");
-            None
+            CpuState::None
         },
         //EI
         0xfb => {
             ram.interrupt.order_enable = true;
             println!("EI");
-            None
+            CpuState::None
         },
 
         //STOP
         0x10 => {
             println!("run unimplémented STOP");
-            None
+            CpuState::Stop
         },
         //HALT
         0x76 => {
-            println!("run unimplémented HALT");
-            None
+//            println!("run unimplémented HALT");
+            CpuState::Halt
         },
 
 

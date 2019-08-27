@@ -41,6 +41,8 @@ pub fn bit_merge(v0: bool, v1: bool, v2: bool, v3: bool,
     if v7 {r+=128;}
     r
 }
+
+#[derive(Debug)]
 pub enum Interrupt{
     None,
     VBlankEnd,
@@ -103,15 +105,16 @@ impl InterruptManager{
         Interrupt::None
     }
 
-    pub fn add_interrupt(&mut self,i:&Interrupt){
+    pub fn add_interrupt(&mut self,i:&Interrupt) -> bool{
         match i {
             Interrupt::VBlank => self.request_vblank = true,
             Interrupt::LcdcStatus => self.request_lcd_stat = true,
             Interrupt::TimerOverflow => self.request_timer = true,
             Interrupt::SerialTransfer => self.request_serial = true,
             Interrupt::Joypad => self.request_joypad = true,
-            _ => {},
+            _ => {return false},
         }
+        true
     }
 
     pub fn try_interrupt(ram : &mut ram::Ram,
@@ -157,6 +160,10 @@ impl InterruptManager{
                     false,false,false)
     }
     pub fn read_interrupt_request(&self)->u8{
+        println!("read interrupt request {} {} {} {} {}",
+                    self.request_vblank,self.request_lcd_stat,
+                    self.request_timer,self.request_serial,
+                    self.request_joypad);
         bit_merge(self.request_vblank,self.request_lcd_stat,
                     self.request_timer,self.request_serial,
                     self.request_joypad,false,false,false)
@@ -406,16 +413,20 @@ impl Timer{
     }
     pub fn write_div(&mut self,_v: u8 ){
         self.div = 0;
+        println!("TIMER write DIV {}" , _v);
     }
     pub fn write_tima(&mut self,v: u8){
         self.tima = v;
+        println!("TIMER write TIMA {}", v);
     }
     pub fn write_tma(&mut self, v: u8){
         self.tma = v;
+        println!("TIMER write TMA {}",v);
     }
     pub fn write_control(&mut self, v: u8){
         self.div_sel = v& 0x3;
         self.start = v& 0x4 != 0;
+        println!("TIMER write control {:02x} {} {}",v,self.div_sel,self.start);
     }
     pub fn read_div(&self)->u8{
         self.div
@@ -439,15 +450,16 @@ impl Timer{
                0=> 255,1=>3,2=>15,3=>63,_=>panic!()}) == 2
         {
             let (r,o) = ram.timer.tima.overflowing_add(1);
+//            println!("clock tick {} {}",r,o);
             if o {
                 ram.timer.tima = ram.timer.tma;
-                Interrupt::TimerOverflow
+                return Interrupt::TimerOverflow
             }else{
                 ram.timer.tima = r;
-                Interrupt::None
+                return Interrupt::None
             }
         }else{
-            Interrupt::None
+            return Interrupt::None
         }
     }
 }
