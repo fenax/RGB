@@ -208,7 +208,7 @@ impl Ram{
             0x8000 ... 0x9fff => //VRAM
                 self.video.read_vram(a-0x8000),
             0xa000 ... 0xbfff => //RAM SWITCH
-                self.cart.read_ramswitch(a-0x8000),
+                self.cart.read_ramswitch(a-0xa000),
             //    panic!("access to unimplemented ram"),
             0xc000 ... 0xdfff => //RAM INTERN
                 self.ram[(a - 0xc000) as usize],

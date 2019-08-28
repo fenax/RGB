@@ -74,6 +74,10 @@ impl Cartridge{
                 Err(e)=>panic!("Failed reading bank {}",i),
             }
         }
+        for i in 0..c.get_ram_bank_count(){
+            let mut sram: [u8;0x2000] = [0;0x2000];
+            c.ramswitch.push(sram);
+        }
 
         match c.rom[0x147]{
             0x00 => {},
