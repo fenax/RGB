@@ -1,7 +1,9 @@
 mod cb;
+pub mod cartridge;
 pub mod alu;
 pub mod ram;
 pub mod registers;
+
 
 use self::cb::*;
 use self::alu::*;

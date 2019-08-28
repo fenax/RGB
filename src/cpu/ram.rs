@@ -36,6 +36,7 @@ pub static DMG : [u8;0x100] =
   0xF5, 0x06, 0x19, 0x78,  0x86, 0x23, 0x05, 0x20,
   0xFB, 0x86, 0x20, 0xFE,  0x3E, 0x01, 0xE0, 0x50];
 
+
 pub struct Ram{
     pub interrupt:io::InterruptManager,
     pub joypad:io::Joypad,
@@ -46,16 +47,19 @@ pub struct Ram{
     pub audio:io::Audio,
 
     pub ram:[u8;0x2000],
+    pub cart:cartridge::Cartridge,
     pub rom:[u8;0x4000],
     pub romswitch:[u8;0x4000],
     pub ramswitch:[u8;0x2000],
     pub hram:[u8;0x7f],
     oam:[u8;0xa0],
     booting:bool,
+    pub cur_ram:u8,
+    pub cur_rom:u8,
 }
 
 impl Ram{
-    pub fn origin() -> Ram{
+    pub fn origin(cart:cartridge::Cartridge) -> Ram{
         Ram{
             interrupt : io::InterruptManager::origin(),
 
@@ -67,12 +71,15 @@ impl Ram{
             audio  : io::Audio::origin(),
 
             ram:[0;0x2000],
+            cart,
             rom:[0;0x4000],
             romswitch:[0;0x4000],
             ramswitch:[0;0x2000],
             hram:[0;0x7f],
             oam:[0;0xa0],
             booting:true,
+            cur_ram:0,
+            cur_rom:1,
         }
     }
     /*
@@ -101,6 +108,9 @@ impl Ram{
          16kB ROM bank #0                 |    
         --------------------------- 0000 --
           */
+
+
+    
     pub fn read_io(&self,a:u16) -> u8{
         match a {
             0x00 => self.joypad.read(),
@@ -188,17 +198,17 @@ impl Ram{
                 if self.booting {
                     DMG[a as usize]
                 }else{
-                    self.rom[a as usize]
+                    self.cart.rom[a as usize]
                 }
             },
             0x0000 ... 0x3fff => //ROM #0
-                self.rom[(a%0x4000) as usize],
+                self.cart.rom[(a%0x4000) as usize],
             0x4000 ... 0x7fff => //ROM SWITCH
-                self.romswitch[(a-0x4000) as usize],
+                self.cart.read_romswitch(a-0x4000),
             0x8000 ... 0x9fff => //VRAM
                 self.video.read_vram(a-0x8000),
             0xa000 ... 0xbfff => //RAM SWITCH
-                self.ramswitch[(a%0x2000) as usize],
+                self.cart.read_ramswitch(a-0x8000),
             //    panic!("access to unimplemented ram"),
             0xc000 ... 0xdfff => //RAM INTERN
                 self.ram[(a - 0xc000) as usize],
@@ -233,11 +243,12 @@ impl Ram{
             },
             0x2000 ... 0x3fff => //rom bank number
             {
-                if v == 1{
+                self.cart.set_rom_bank(v);
+/*                if v == 1{
                     println!("switching to rom bank 1");
                 }else{
                     panic!("rom switch {:04x} {:02x}",a,v);
-                }
+                }*/
             },
             0x4000 ... 0x5fff => // ram bank number (or upper bit of rom bank)
             {},
@@ -249,7 +260,7 @@ impl Ram{
                 self.video.write_vram(a-0x8000, v); 
             },
             0xa000 ... 0xbfff => //RAM SWITCH
-                self.ramswitch[(a%0x2000) as usize] = v,
+                self.cart.write_ramswitch(a-0xa000,v),
 //                panic!("access to unimplemented ram"),
             0xc000 ... 0xdfff => //RAM INTERN
                 self.ram[(a%0x2000) as usize] = v,

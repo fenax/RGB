@@ -333,7 +333,7 @@ impl Video{
             x = std::cmp::max(f.x-8,x);
             let tile_line =self.line as i16 - (f.y as i16 - 16);
 //            println!("self.line {} f.y {} tile_line {}",self.line,f.y,tile_line);
-            let tile_line = if f.x_flip { 7 - tile_line }else{tile_line};
+            let tile_line = if f.y_flip { 7 - tile_line }else{tile_line};
             assert!(tile_line>=0 && tile_line<8);
             //let (l,h) = self.read_tile(f.tile,tile_line as u16);
             let pal = if f.palette{  &self.sprite_palette_1
@@ -342,6 +342,11 @@ impl Video{
             'inner: loop{
 //                println!("x {} f.x {}",x,f.x);
                 let tile_column = x+8-f.x;
+                let tile_column = if f.x_flip{
+                    7 - tile_column
+                }else{
+                    tile_column
+                };
                 //let l_bit = (l>>(7-tile_column)) & 1;
                 //let h_bit = (h>>(7-tile_column)) & 1;
                 //let color = l_bit + h_bit * 2;
@@ -422,6 +427,10 @@ impl Video{
         self.sprite_size = v[2];
         self.enable_sprites = v[1];
         self.enable_background = v[0];
+        if !self.enable_lcd{
+            self.line = 0;
+            self.line_clock = 0;
+        }
     }
 
     pub fn read_control(&self)->u8{ 
@@ -448,6 +457,7 @@ impl Video{
     }
 
     pub fn read_status(&self)->u8{
+        println!("read status {} {}",self.line,self.line_clock);
         bit_merge(
             true,
             self.enable_ly_lcy_check,

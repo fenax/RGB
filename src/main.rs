@@ -53,9 +53,9 @@ struct Gameboy{
     got_tick: bool,
 }
 impl Gameboy{
-    fn origin() -> Gameboy{
+    fn origin(cart:cpu::cartridge::Cartridge) -> Gameboy{
         let mut r = Gameboy{
-            ram : cpu::ram::Ram::origin(),
+            ram : cpu::ram::Ram::origin(cart),
             reg : cpu::registers::Registers::origin(),
             alu : cpu::alu::Alu::origin(),
             got_tick : false,
@@ -285,18 +285,16 @@ fn main() -> io::Result<()>{
         //Some(&b_attr)                 // Use default buffering attributes
         None
     ).unwrap();
-    let mut gb = Gameboy::origin();
-    let mut f = File::open(&args[1])?; 
-           let (mut ctx, mut event_loop) = 
+    let (mut ctx, mut event_loop) = 
         ContextBuilder::new("Rust Game Boy Emulator", "Awosomotter")
             .window_mode(conf::WindowMode::default().dimensions(512.0,512.0))
 		    .build()
 		    .expect("aieee, could not create ggez context!");
 
     let mut window = window::Window::new(&mut ctx,inbox_window,to_emulator);
-    f.read_exact(&mut gb.ram.rom)?;
-    f.read_exact(&mut gb.ram.romswitch)?;
-
+    let cart = cpu::cartridge::Cartridge::new(&args[1]);
+    cart.extract_info();
+    let mut gb = Gameboy::origin(cart);
     thread::Builder::new().name("emulator".to_string())
     .spawn(move|| {
         gb.main_loop(inbox_emulator,to_window,s);
