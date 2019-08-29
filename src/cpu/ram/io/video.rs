@@ -359,9 +359,9 @@ impl Video{
         let mut list:Vec<Sprite> = 
             self.oam.iter().filter(|s| s.y <= self.line+16 && s.y > self.line + 16 - yoffset)
             .copied().collect();
-        list.sort();
+        list.sort(|a,b| b.x.cmp(&a.x));
         //TODO fix order of sprites from front to back
-        for f in list.iter().rev(){
+        for f in list.iter(){
             let mut tile_line =self.line as i16 - (f.y as i16 - 16);
             let mut tile;
             if self.sprite_size{
@@ -390,10 +390,12 @@ impl Video{
                 };
                 let color = self.get_tile_1(tile, (tile_line*8+ tile_column as i16)as u16);
 //                println!("pixel {} {} {}",self.line,i,color);
-                line[i as usize]
-                        = Pixel{behind_bg:f.behind_bg,
-                                palette:  f.palette,
-                                color};
+                if color!= 0{
+                    line[i as usize]
+                            = Pixel{behind_bg:f.behind_bg,
+                                    palette:  f.palette,
+                                    color};
+                }
             }
         }
         line
