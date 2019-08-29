@@ -235,7 +235,7 @@ impl EventHandler for Window {
     }
     fn key_down_event(&mut self,_ctx: &mut Context,
         keycode: KeyCode,_keymods: KeyMods,_repeat: bool) {
-            println!("KEYCODE DOWN {:?}",keycode);
+        println!("KEYCODE DOWN {:?}",keycode);
         self.tx.send(ToEmu::KeyDown(
         match keycode {
             KeyCode::Up      => EmuKeys::Up,
@@ -249,7 +249,6 @@ impl EventHandler for Window {
             KeyCode::Numpad2 => EmuKeys::Select,
             _ => return
         })).unwrap();
-        println!("end KEYDOWN");
     }
 
     fn key_up_event(&mut self,_ctx: &mut Context,_keycode: KeyCode,

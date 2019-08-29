@@ -72,6 +72,19 @@ impl Sprite{
     }
 }
 
+#[derive(Clone,Copy)]
+pub struct Pixel{
+    behind_bg:bool,
+    palette:bool,
+    color:u8,
+}
+
+#[derive(Clone,Copy)]
+pub struct WindowPixel{
+    transparent:bool,
+    color:u8,
+}
+
 pub struct Video{
    // frame_clock:u32,
     line_clock:u16,
@@ -194,11 +207,12 @@ impl Video{
         (l,h)
     }
 
-    fn draw_window(&mut self){
+    fn draw_window(&mut self)->[WindowPixel;160]{
+        let mut out_line = [WindowPixel{transparent:true,color:0};160];
         if self.enable_window == false 
             || self.window_scroll_x>=167
             || self.window_scroll_y>self.line{
-            return
+            return out_line
         }
         let tile_map:u16 = 
             if self.window_tile_map{
@@ -216,12 +230,12 @@ impl Video{
                 window_x = 0;
             } ;
 
-        let tile_line = self.line/8;
-        let tile_sub_line = self.line %8; 
+        let tile_line = self.window_line/8;
+        let tile_sub_line = self.window_line %8; 
 
         'outer: loop{
-            let tile_column = window_x%8;
-            let mut tile_sub_column = window_x/8;
+            let tile_column = window_x/8;
+            let mut tile_sub_column = window_x%8;
             let map_offset:u16 = 
                     tile_map +
                         tile_line as u16 *32
@@ -236,9 +250,11 @@ impl Video{
                 //let color = l_bit + h_bit * 2;
                 let color = self.get_tile(tile, (tile_sub_line*8+tile_sub_column as u8) as u16);
 
-                self.back_buffer[
+                out_line[screen_x] = WindowPixel{transparent:false,color};
+                    /* self.back_buffer[
                     self.line as usize*160+screen_x] = 
                     self.background_palette[color as usize];
+                    */
                 screen_x+=1;
                 if screen_x >= 160 {
                     break 'outer;
@@ -251,23 +267,34 @@ impl Video{
 
             }
         }
+        self.window_line += 1;
+        out_line
+    }
 
+    fn get_tile_1(&self, tile:u8, pixel:u16) -> u8{
+        self.tiles[tile as usize][pixel as usize]
+    }
+
+    fn get_tile_0(&self, tile:u8, pixel:u16) -> u8{
+        self.tiles[(tile^0x80) as usize+128][pixel as usize]
     }
 
     fn get_tile(& self, tile:u8, pixel:u16) -> u8{
         if self.tile_set{
-            self.tiles[tile as usize][pixel as usize]
+            self.get_tile_1(tile,pixel)
         }else{
-            self.tiles[(tile^0x80) as usize+128][pixel as usize]
-
+            self.get_tile_0(tile, pixel)
         }
     }
 
-    fn draw_bg(&mut self){
+
+
+    fn draw_bg(&mut self)->[u8;160]{
+        let mut out_line:[u8;160] = [0;160];
         if self.enable_background == false {
             self.back_buffer = [255;144*160];
-            return
-            }
+            return out_line
+        }
 
         let mut x :usize = 0;
         //Draw time
@@ -299,10 +326,11 @@ impl Video{
                 //let color = l_bit + h_bit * 2;
                 let color = self.get_tile(tile, bg_tile_sub_line*8+bg_tile_sub_column);
                 // println!("line {} x {}",ram.video.line,x);
-                self.back_buffer[
+                out_line[x] = color;
+/*                self.back_buffer[
                     self.line as usize*160+x] = 
                     self.background_palette[color as usize];
-
+*/
                 x+=1;
                 if x >= 160 {
                     break 'outer;
@@ -313,67 +341,100 @@ impl Video{
                     break 'inner; 
                 }
             }
-        }          
-    }
-    pub fn draw_sprite_8(&mut self){
-        if self.enable_sprites == false{
-            return
         }
+        out_line
+    }
+    pub fn draw_sprite_both(&mut self)->[Pixel;160]{
+        let yoffset;
+        if self.sprite_size{
+            yoffset = 16;
+        }else{
+            yoffset = 8;
+        }
+        let mut line = [Pixel{behind_bg:false,palette:false,color:0};160];
+        if self.enable_sprites == false{
+            return line
+        }
+
         let mut list:Vec<Sprite> = 
-            self.oam.iter().filter(|s| s.y <= self.line +16 && s.y > self.line +16-8).copied().collect();
+            self.oam.iter().filter(|s| s.y <= self.line+16 && s.y > self.line + 16 - yoffset)
+            .copied().collect();
         list.sort();
-        let mut i = list.iter();
-        let mut x = 0;
-        'outer: loop{
-            let f = i.next();
-            if f.is_none(){
-                break 'outer;
+        //TODO fix order of sprites from front to back
+        for f in list.iter().rev(){
+            let mut tile_line =self.line as i16 - (f.y as i16 - 16);
+            let mut tile;
+            if self.sprite_size{
+                if tile_line<8{
+                    //upper tile
+                    tile = f.tile & 0xfe;
+                }else{
+                    //lower tile
+                    tile_line -= 8;
+                    tile = f.tile | 0x01;
+                }
+                if f.y_flip {tile ^= 0x01;}
+            }else{
+                tile = f.tile;
             }
-            let f = f.unwrap();
-            x = std::cmp::max(f.x-8,x);
-            let tile_line =self.line as i16 - (f.y as i16 - 16);
-//            println!("self.line {} f.y {} tile_line {}",self.line,f.y,tile_line);
+
             let tile_line = if f.y_flip { 7 - tile_line }else{tile_line};
-            assert!(tile_line>=0 && tile_line<8);
-            //let (l,h) = self.read_tile(f.tile,tile_line as u16);
-            let pal = if f.palette{  &self.sprite_palette_1
-                             }else{  &self.sprite_palette_0
-            };
-            'inner: loop{
-//                println!("x {} f.x {}",x,f.x);
-                let tile_column = x+8-f.x;
+
+//            println!("16 tile {} {} {:02x} {}",f.x,f.y,tile,tile_line);
+            for i in f.x.saturating_sub(8)..std::cmp::min(f.x,159){
+                let tile_column = i+8-f.x;
                 let tile_column = if f.x_flip{
                     7 - tile_column
                 }else{
                     tile_column
                 };
-                //let l_bit = (l>>(7-tile_column)) & 1;
-                //let h_bit = (h>>(7-tile_column)) & 1;
-                //let color = l_bit + h_bit * 2;
-                let color = self.get_tile(f.tile, (tile_line*8+tile_column as i16) as u16);
-
-                if color > 0{
-                    let idx = self.line as usize * 160+x as usize;
-                    
-                    if  !f.behind_bg ||
-                        self.back_buffer[idx] == self.background_palette[0]
-                        {
-                            self.back_buffer[idx] = pal[color as usize-1];
-                        }
-                    
-                }
-
-                if x>= 160 {
-                    break 'outer;
-                }
-                x+= 1;
-                if x >= f.x{
-                    break 'inner;
-                }
+                let color = self.get_tile_1(tile, (tile_line*8+ tile_column as i16)as u16);
+//                println!("pixel {} {} {}",self.line,i,color);
+                line[i as usize]
+                        = Pixel{behind_bg:f.behind_bg,
+                                palette:  f.palette,
+                                color};
             }
         }
+        line
     }
-    
+
+    pub fn draw_line(&mut self){
+        let bg      = self.draw_bg();
+        let sprites = self.draw_sprite_both();
+/*        if self.sprite_size {
+                      self.draw_sprite_16()
+        }else{
+                      self.draw_sprite_8()
+        };*/
+        
+        let win     = self.draw_window();
+        
+
+        for (i,(b,s,w)) in izip!(bg.iter(),sprites.iter(),win.iter()).enumerate(){
+            let index = self.line as usize*160 + i;
+            let pal = if s.palette{  &self.sprite_palette_1
+                             }else{  &self.sprite_palette_0 };
+            self.back_buffer[index] = 
+            if w.transparent{
+                if s.behind_bg{
+                    if *b == 0 && s.color != 0{
+                        pal[s.color as usize-1]
+                    }else{
+                        self.background_palette[*b as usize]
+                    }
+                }else{
+                    if s.color != 0{
+                        pal[s.color as usize-1]
+                    }else{
+                        self.background_palette[*b as usize] 
+                    }
+                }
+            }else{
+                self.background_palette[w.color as usize]
+            };
+        }
+    }
 
     pub fn step(ram: &mut Ram,_clock :u32)->Interrupt{
         if ram.video.enable_lcd
@@ -407,9 +468,7 @@ impl Video{
                 }
             }else{
                 if ram.video.line_clock == 1 && ram.video.line < 144 {
-                    ram.video.draw_bg();
-                    ram.video.draw_sprite_8();
-                    ram.video.draw_window();
+                    ram.video.draw_line();
                 }
             }
             
@@ -418,15 +477,15 @@ impl Video{
     }
     pub fn write_control(&mut self, v : u8){
         println!("write lcd control {:02x}",v);
-        let v = bit_split(v);
-        self.enable_lcd = v[7];
-        self.window_tile_map = v[6];
-        self.enable_window = v[5];
-        self.tile_set = v[4];
-        self.background_tile_map= v[3];
-        self.sprite_size = v[2];
-        self.enable_sprites = v[1];
-        self.enable_background = v[0];
+        //let v = bit_split(v);
+        self.enable_lcd = bit(v,7);
+        self.window_tile_map = bit(v,6);
+        self.enable_window = bit(v,5);
+        self.tile_set = bit(v,4);
+        self.background_tile_map= bit(v,3);
+        self.sprite_size = bit(v,2);
+        self.enable_sprites = bit(v,1);
+        self.enable_background = bit(v,0);
         if !self.enable_lcd{
             self.line = 0;
             self.line_clock = 0;
@@ -435,14 +494,14 @@ impl Video{
 
     pub fn read_control(&self)->u8{ 
         bit_merge(
-            self.enable_lcd,
-            self.window_tile_map,
-            self.enable_window,
-            self.tile_set,
-            self.background_tile_map,
-            self.sprite_size,
+            self.enable_background,
             self.enable_sprites,
-            self.enable_background
+            self.sprite_size,
+            self.background_tile_map,
+            self.tile_set,
+            self.enable_window,
+            self.window_tile_map,
+            self.enable_lcd
         )
     } 
 
@@ -459,14 +518,15 @@ impl Video{
     pub fn read_status(&self)->u8{
         println!("read status {} {}",self.line,self.line_clock);
         bit_merge(
-            true,
-            self.enable_ly_lcy_check,
-            self.enable_mode_2_oam_check,
-            self.enable_mode_1_vblank_check,
-            self.enable_mode_0_hblank_check,
-            self.signal_ly_lcy_comparison,
             false,
-            false
+            false,
+            self.signal_ly_lcy_comparison,
+            self.enable_mode_0_hblank_check,
+            self.enable_mode_1_vblank_check,
+            self.enable_mode_2_oam_check,
+            self.enable_ly_lcy_check,
+            true,
+            
         ) + if self.line >= 144 {
             1
         }else{

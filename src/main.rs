@@ -2,6 +2,9 @@ extern crate ggez;
 extern crate libpulse_binding as pulse;
 extern crate libpulse_simple_binding as psimple;
 extern crate byteorder;
+#[macro_use]
+extern crate itertools;
+
 use ggez::{graphics, Context, ContextBuilder, GameResult, conf};
 use ggez::event::{self, EventHandler};
 
@@ -226,7 +229,7 @@ impl Gameboy{
                 _ => {},
             };
 
-           if clock > 100000000 {break}
+           //if clock > 100000000 {break}
            if clock%0x1fff == 0 {
                //runs at 512 hz
            }

@@ -1230,13 +1230,13 @@ pub fn instruct(ram : &mut Ram, reg : &mut Registers, alu: &mut Alu)
         //DI
         0xf3 => {
             ram.interrupt.order_disable = false;
-            println!("DI");
+//            println!("DI");
             CpuState::None
         },
         //EI
         0xfb => {
             ram.interrupt.order_enable = true;
-            println!("EI");
+//            println!("EI");
             CpuState::None
         },
 

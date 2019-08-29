@@ -123,6 +123,7 @@ impl Ram{
 
             0x0f => self.interrupt.read_interrupt_request(),
 
+            0x24 => self.audio.read_stereo_volume(),
             0x40 => self.video.read_control(),
             0x41 => self.video.read_status(),
             0x42 => self.video.read_scroll_y(),
@@ -239,7 +240,7 @@ impl Ram{
         match a {
             0x0000 ... 0x1fff => //ram enable
             {
-                println!("ram enable {:04x} {:02x}",a,v);
+//                println!("ram enable {:04x} {:02x}",a,v);
             },
             0x2000 ... 0x3fff => //rom bank number
             {
@@ -287,7 +288,7 @@ impl Ram{
             0xfea0 ... 0xfeff | 0xff4c ... 0xff4f | 0xff51 ... 0xff7f
                 => // empty, no IO
                 {
-                    println!("should not write there {:04x} {:02x}",a,v);
+//                    println!("should not write there {:04x} {:02x}",a,v);
                 },
         }
       //  println!("wrote {:02x}:{} at {:04x}",v,v as char,a);

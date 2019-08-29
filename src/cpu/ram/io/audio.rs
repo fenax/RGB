@@ -639,6 +639,14 @@ impl Audio{
                self.volume_left,self.right_enable,self.volume_right);
         }
     }
+    pub fn read_stereo_volume(&self)->u8{
+        let mut r =0;
+        if self.left_enable { r |= 1 << 7;}
+        if self.right_enable{ r |= 1 << 3;}
+        r |= (self.volume_left & 0x7) << 4;
+        r |= self.volume_right & 0x7;
+        r
+    }
 
     pub fn write_output_selection(&mut self,v:u8){
     //    println!("setting audio output selection {:02x}",v);
