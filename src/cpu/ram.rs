@@ -124,6 +124,8 @@ impl Ram{
             0x0f => self.interrupt.read_interrupt_request(),
 
             0x24 => self.audio.read_stereo_volume(),
+            0x10 ... 0x3f => self.audio.read_register(a),
+            //0x30...0x3f => self.audio.wave3.read_sample_ram(a-0x30),
             0x40 => self.video.read_control(),
             0x41 => self.video.read_status(),
             0x42 => self.video.read_scroll_y(),
@@ -138,7 +140,7 @@ impl Ram{
             0x4b => self.video.read_window_scroll_x(),
             _ =>{
                 println!("reading from unimplemented io {:02x}",a);
-                0
+                0xff
             }
         }
     }
@@ -154,7 +156,8 @@ impl Ram{
 
             0x0f => self.interrupt.write_interrupt_request(v),
 
-            0x10 => self.audio.write_sound_mode1_sweep(v),
+            0x10 ... 0x3f => self.audio.write_register(a,v),
+/*            0x10 => self.audio.write_sound_mode1_sweep(v),
             0x11 => self.audio.write_sound_mode1_lp(v),
             0x12 => self.audio.write_sound_mode1_envelope(v),
             0x13 => self.audio.write_sound_mode1_frequency_lo(v),
@@ -174,7 +177,7 @@ impl Ram{
             0x25 => self.audio.write_output_selection(v),
             0x26 => self.audio.write_power_flag(v),
 
-            0x30...0x3f => self.audio.wave3.write_sample_ram(a-0x30,v),
+            0x30...0x3f => self.audio.wave3.write_sample_ram(a-0x30,v),*/
 
             0x40 => self.video.write_control(v),
             0x41 => self.video.write_status(v),

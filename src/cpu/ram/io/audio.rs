@@ -5,6 +5,19 @@ use cpu::ram::Ram;
 
 const Audio_Debug :bool = false;
 
+/*
+     NRx0 NRx1 NRx2 NRx3 NRx4
+    ---------------------------
+NR1x  $80  $3F $00  $FF  $BF 
+NR2x  $FF  $3F $00  $FF  $BF 
+NR3x  $7F  $FF $9F  $FF  $BF 
+NR4x  $FF  $FF $00  $00  $BF 
+NR5x  $00  $00 $70
+
+$FF27-$FF2F always read back as $FF
+*/
+
+
 pub struct Noise{
     length:u8,
     envelope_volume : u8,
@@ -55,6 +68,13 @@ impl Noise{
             next_shift:0,
             shift_reg:1,
         }
+    }
+    pub fn clear(&mut self){
+        self.write_envelope(0);
+        self.write_frequency_hi(0);
+        self.write_shift_reg(0);
+        self.write_lp(0);
+        self.period = 0;
     }
 
     pub fn change_after(&self)->u32{
@@ -138,6 +158,9 @@ impl Noise{
             println!("NOISE write length {}",self.length);
         }
     }
+    pub fn read_lp(&self)->u8{
+        0xff
+    }
     pub fn write_envelope(&mut self, v:u8){
         self.envelope_volume = 
                 (v >> 4) & 0xf;
@@ -149,6 +172,12 @@ impl Noise{
             println!("NOISE write envelope {} {} {}",self.envelope_volume,
             self.envelope_add_mode,self.envelope_period);
         }
+    }
+    pub fn read_envelope(&self)->u8{
+        let mut r = self.envelope_volume<<4;
+        if self.envelope_add_mode {r|=0x8};
+        r |= self.envelope_period;
+        r
     }
     pub fn write_shift_reg(&mut self, v:u8){
         self.clock_shift = 
@@ -162,7 +191,12 @@ impl Noise{
             self.width_mode,self.divisor_code);
         }
     }
-        
+    pub fn read_shift_reg(&self)->u8{
+        let mut r = self.clock_shift << 4;
+        if self.width_mode {r|=0x8};
+        r|= self.divisor_code;
+        r
+    }
     pub fn write_frequency_hi(&mut self, v:u8){
         self.must_trigger = v&0x80 != 0;
         self.length_enable = v&0x40 != 0;
@@ -171,7 +205,29 @@ impl Noise{
             self.must_trigger,self.length_enable);
         }
     }
-}
+    pub fn read_frequency_hi(&self)->u8{
+        if self.length_enable {0xff}else{0xbf}
+    }
+    pub fn write_register(&mut self,a:u16, v:u8){
+        match a{
+            0 => {},
+            1 => self.write_lp(v),
+            2 => self.write_envelope(v),
+            3 => self.write_shift_reg(v),
+            4 => self.write_frequency_hi(v),
+            _ => panic!("writing impossible value"),
+        }
+    }
+    pub fn read_register(& self,a:u16)->u8{
+        match a{
+            0 => 0xff,
+            1 => self.read_lp(),
+            2 => self.read_envelope(),
+            3 => self.read_shift_reg(),
+            4 => self.read_frequency_hi(),
+            _ => panic!("reading impossible value"),
+        }
+    }}
 
 const wave_clock_factor :u32 =  2;
 pub struct Wave{
@@ -185,6 +241,7 @@ pub struct Wave{
     next_change:u32,
     cursor:u8,
     enable:bool,
+    save_volume:u8,
 }
 
 impl Wave{
@@ -203,7 +260,17 @@ impl Wave{
                      0x3,0x4,0xB,0x8,0x2,0xE,0xD,0xA],
             cursor:0,
             enable:false,
+            save_volume:0,
         }
+    }
+    pub fn clear(&mut self){
+        self.write_frequency_hi(0);
+        self.write_frequency_lo(0);
+        self.write_lp(0);
+        self.write_power(0);
+        self.write_volume(0);
+        self.cursor = 0;
+        self.save_volume = 0;
     }
 
     pub fn step_frequency(&self)->u32{
@@ -262,6 +329,7 @@ impl Wave{
         }
     }
     pub fn write_volume(&mut self, v:u8){
+        self.save_volume = v;
         self.volume = match bits(v,5,2){
             0 => 0.0,
             1 => 1.0,
@@ -270,11 +338,23 @@ impl Wave{
             _ => panic!("impossible"),
         }
     }
+    pub fn read_volume(&self)->u8{
+        self.save_volume | 0x9f
+    }
+    pub fn write_power(&mut self, v:u8){
+        self.power = v & 0x80 != 0;
+    }
+    pub fn read_power(&self)->u8{
+        if self.power {0xff}else{0x7f}
+    }
     pub fn write_lp(&mut self, v:u8){
         self.length = 255 - v;
         if Audio_Debug{
             println!("WAVE write length {} ",self.length);
         }
+    }
+    pub fn read_lp(&self)->u8{
+        0xff
     }
 
     pub fn write_frequency_lo(&mut self, v:u8){
@@ -283,6 +363,9 @@ impl Wave{
         if Audio_Debug{
             println!("WAVE write half frequency");
         }
+    }
+    pub fn read_frequency_lo(&self)->u8{
+        0xff
     }
     pub fn write_frequency_hi(&mut self, v:u8){
         self.frequency &= 0xff;
@@ -294,11 +377,37 @@ impl Wave{
             self.must_trigger,self.length_enable);
         }
     } 
+    pub fn read_frequency_hi(&self)->u8{
+        if self.length_enable{0xff}else{0xbf}
+    }
     pub fn write_sample_ram(&mut self, a:u16, v:u8){
         self.samples[(a*2) as usize] = v >> 4;
         self.samples[(a*2) as usize +1] = v & 0xf;
     }
-}
+    pub fn read_sample_ram(&self, a:u16)->u8{
+        (self.samples[(a*2) as usize] << 4) 
+        | self.samples[(a*2) as usize +1]
+    }
+    pub fn write_register(&mut self, a:u16, v:u8){
+        match a {
+            0 => self.write_power(v),
+            1 => self.write_lp(v),
+            2 => self.write_volume(v),
+            3 => self.write_frequency_lo(v),
+            4 => self.write_frequency_hi(v),
+            _ => panic!("writing impossible register"),
+        }
+    }
+    pub fn read_register(&self, a:u16)->u8{
+        match a {
+            0 => self.read_power(),
+            1 => self.read_lp(),
+            2 => self.read_volume(),
+            3 => self.read_frequency_lo(),
+            4 => self.read_frequency_hi(),
+            _ => panic!("writing impossible register"),
+        }
+    }}
 
 
 pub struct Square{
@@ -352,6 +461,17 @@ impl Square{
             sweep_timer:0,
             enable:false,
         }
+    }
+
+    pub fn clear(&mut self){
+        self.write_envelope(0);
+        self.write_frequency_hi(0);
+        self.write_frequency_lo(0);
+        self.write_lp(0);
+        self.write_sweep(0);
+        self.frequency = 0;
+        self.next_change = 0;
+        self.high = false;
     }
 
     pub fn step_frequency(&self)->u32{
@@ -479,6 +599,12 @@ impl Square{
                 self.sweep_period,self.sweep_negate,self.sweep_shift);
         }
     }
+    pub fn read_sweep(&self)->u8{
+        let mut r = self.sweep_period << 4;
+        if self.sweep_negate {r |= 0x8};
+        r |= self.sweep_shift;
+        r | 0x80
+    }
     pub fn write_lp(&mut self, v:u8){
         self.duty = (v >> 6) & 0x3;
         self.length = 63 - (v&0x3f);
@@ -486,6 +612,9 @@ impl Square{
             println!("write length {} duty {}",
                     self.length,self.duty);
         }
+    }
+    pub fn read_lp(&self)->u8{
+        (self.duty << 6)|0x3f
     }
     pub fn write_envelope(&mut self, v:u8){
         self.envelope_volume = 
@@ -499,12 +628,21 @@ impl Square{
             self.envelope_add_mode,self.envelope_period);
         }
     }
+    pub fn read_envelope(&self)->u8{
+        let mut r = self.envelope_volume << 4;
+        if self.envelope_add_mode {r |= 0x8};
+        r |= self.envelope_period;
+        r
+    }
     pub fn write_frequency_lo(&mut self, v:u8){
         self.frequency &= 0xff00;
         self.frequency |= v as u16;
         if Audio_Debug{
             println!("write half frequency");
         }
+    }
+    pub fn read_frequency_lo(&self)->u8{
+        0xff
     }
     pub fn write_frequency_hi(&mut self, v:u8){
         self.frequency &= 0xff;
@@ -516,7 +654,31 @@ impl Square{
                 self.must_trigger,self.length_enable);
         }
     }
+    pub fn read_frequency_hi(&self)->u8{
+        if self.length_enable {0xff} else {0xbf}
+    }
+    pub fn write_register(&mut self, a:u16, v:u8){
+        match a{
+            0 => self.write_sweep(v),
+            1 => self.write_lp(v),
+            2 => self.write_envelope(v),
+            3 => self.write_frequency_lo(v),
+            4 => self.write_frequency_hi(v),
+            _ => panic!("writing impossible register"),
+        }
+    }
+    pub fn read_register(&self, a:u16)->u8{
+        match a{
+            0 => self.read_sweep(),
+            1 => self.read_lp(),
+            2 => self.read_envelope(),
+            3 => self.read_frequency_lo(),
+            4 => self.read_frequency_hi(),
+            _ => panic!("reading impossible register"),
+        }
+    }
 }
+
 
 pub struct Audio{
     next_sample  : u32,
@@ -575,59 +737,57 @@ impl Audio{
 
         }
     }
-    pub fn write_sound_mode1_sweep(&mut self,v:u8){
-        if Audio_Debug{
-            print!("SQUARE 1 ");
+    
+    pub fn write_register(&mut self,a:u16,v:u8){
+        match a{
+            0x26 => self.write_power_flag(v),
+            0x30...0x3f => self.wave3.write_sample_ram(a-0x30, v),
+            _ => {
+                if self.power{
+                    match a{
+                        0x10...0x14 => {
+                            if Audio_Debug{
+                                print!("SQUARE 1 ");
+                            }
+                            self.square1.write_register(a-0x10,v);
+                        },
+                        0x16...0x19 => {
+                            if Audio_Debug{
+                                print!("SQUARE 2 ");
+                            }
+                            self.square2.write_register(a-0x15,v);
+                        },
+                        0x1a...0x1e => {
+                            if Audio_Debug{
+                                print!("WAVE ");
+                            }
+                            self.wave3.write_register(a-0x1a,v);
+                        },
+                        0x20...0x23 => {
+                            if Audio_Debug{
+                                print!("NOISE ");
+                            }
+                            self.noise4.write_register(a-0x1f,v);
+                        },
+                        0x24 => self.write_stereo_volume(v),
+                        0x25 => self.write_output_selection(v),
+                        _ => {},
+                    }
+                }
+            }
         }
-        self.square1.write_sweep(v);
     }
-    pub fn write_sound_mode1_lp(&mut self, v:u8){
-        if Audio_Debug{
-            print!("SQUARE 1 ");
+    pub fn read_register(&self,a:u16)->u8{
+        match a{
+            0x10...0x14 => self.square1.read_register(a-0x10),
+            0x16...0x19 => self.square2.read_register(a-0x15),
+            0x1a...0x1e => self.wave3.read_register(a-0x1a),
+            0x20...0x23 => self.noise4.read_register(a-0x1f),
+            0x24 => self.read_stereo_volume(),
+            0x25 => self.read_output_selection(),
+            0x26 => self.read_power_flag(),
+            _ => 0xff,
         }
-        self.square1.write_lp(v);
-    }
-    pub fn write_sound_mode1_envelope(&mut self, v:u8){
-        if Audio_Debug{
-            print!("SQUARE 1 ");
-        }
-        self.square1.write_envelope(v);
-    }
-    pub fn write_sound_mode1_frequency_lo(&mut self, v:u8){
-        if Audio_Debug{
-            print!("SQUARE 1 ");
-        }
-        self.square1.write_frequency_lo(v);
-    }
-    pub fn write_sound_mode1_frequency_hi(&mut self, v:u8){
-        if Audio_Debug{
-            print!("SQUARE 1 ");
-        }
-        self.square1.write_frequency_hi(v);
-    }
-    pub fn write_sound_mode2_lp(&mut self, v:u8){
-         if Audio_Debug{
-           print!("SQUARE 2 ");
-         }
-        self.square2.write_lp(v);
-    }
-    pub fn write_sound_mode2_envelope(&mut self, v:u8){
-        if Audio_Debug{
-            print!("SQUARE 2 ");
-        }
-        self.square2.write_envelope(v);
-    }
-    pub fn write_sound_mode2_frequency_lo(&mut self, v:u8){
-        if Audio_Debug{
-            print!("SQUARE 2 ");
-        }
-        self.square2.write_frequency_lo(v);
-    }
-    pub fn write_sound_mode2_frequency_hi(&mut self, v:u8){
-        if Audio_Debug{
-            print!("SQUARE 2 ");
-        }
-        self.square2.write_frequency_hi(v);
     }
     pub fn write_stereo_volume(&mut self, v:u8){
         self.left_enable = bit(v,7);
@@ -660,11 +820,27 @@ impl Audio{
         self.sound2_to_right = bit(v,1);
         self.sound1_to_right = bit(v,0);
     }
+    pub fn read_output_selection(&self)->u8{
+        bit_merge(self.sound1_to_right,self.sound2_to_right,
+                  self.sound3_to_right,self.sound4_to_right,
+                  self.sound1_to_left,self.sound2_to_left,
+                  self.sound3_to_left,self.sound4_to_left)
+    }
     pub fn write_power_flag(&mut self, v:u8){
         self.power = bit(v,7);
+        if !self.power{
+            self.square1.clear();
+            self.square2.clear();
+            self.wave3.clear();
+            self.noise4.clear();
+        }
         if Audio_Debug{
             println!("setting audio power to {}",self.power);
         }
+    }
+    pub fn read_power_flag(&self)->u8{
+        bit_merge(true,true,true,true,
+                  true,true,true,self.power)
     }
 
     pub fn step(&mut self,clock :u32)->Interrupt{
@@ -726,4 +902,46 @@ impl Audio{
         }
         Interrupt::None
     }
+}
+
+
+
+
+#[cfg(test)]
+mod tests {
+    use cpu::ram::io::audio;
+    const mask:[u8;22] = 
+                 [0x80, 0x3F, 0x00, 0xFF, 0xBF, 0xFF, 0x3F, 0x00, 0xFF, 0xBF,
+                  0x7F, 0xFF, 0x9F, 0xFF, 0xBF, 0xFF, 0xFF, 0x00, 0x00, 0xBF,
+                  0x00, 0x00];
+    #[test]
+    fn registers_write_read(){
+        let mut a = audio::Audio::origin();
+        a.write_register(0x26,0xff);
+        for i in 0x10..=0x25{
+            a.write_register(i,0xff);
+        }
+        for i in 0x10..=0x25{
+            assert_eq!(a.read_register(i),0xff);
+        }
+        for i in 0x10..=0x25{
+            a.write_register(i,0x00);
+        }
+        for i in 0x10..=0x25{
+            assert_eq!(a.read_register(i),mask[(i-0x10)as usize]);
+        }
+        for i in 0x10..=0x25{
+            a.write_register(i,0x55);
+        }
+        for i in 0x10..=0x25{
+            assert_eq!(a.read_register(i),0x55 | mask[(i-0x10)as usize]);
+        }
+        for i in 0x10..=0x25{
+            a.write_register(i,0xAA);
+        }
+        for i in 0x10..=0x25{
+            assert_eq!(a.read_register(i),0xAA | mask[(i-0x10)as usize]);
+        }
+    }
+    
 }
