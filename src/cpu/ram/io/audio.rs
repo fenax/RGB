@@ -75,6 +75,7 @@ impl Noise{
         self.write_shift_reg(0);
         self.write_lp(0);
         self.period = 0;
+        self.enable = false;
     }
 
     pub fn change_after(&self)->u32{
@@ -271,6 +272,8 @@ impl Wave{
         self.write_volume(0);
         self.cursor = 0;
         self.save_volume = 0;
+        self.enable = false;
+
     }
 
     pub fn step_frequency(&self)->u32{
@@ -472,6 +475,7 @@ impl Square{
         self.frequency = 0;
         self.next_change = 0;
         self.high = false;
+        self.enable = false;
     }
 
     pub fn step_frequency(&self)->u32{
@@ -786,6 +790,7 @@ impl Audio{
             0x24 => self.read_stereo_volume(),
             0x25 => self.read_output_selection(),
             0x26 => self.read_power_flag(),
+            0x30...0x3f => self.wave3.read_sample_ram(a-0x30),
             _ => 0xff,
         }
     }
@@ -833,13 +838,16 @@ impl Audio{
             self.square2.clear();
             self.wave3.clear();
             self.noise4.clear();
+            self.write_stereo_volume(0x00);
+            self.write_output_selection(0x00);
         }
         if Audio_Debug{
             println!("setting audio power to {}",self.power);
         }
     }
     pub fn read_power_flag(&self)->u8{
-        bit_merge(true,true,true,true,
+        bit_merge(self.square1.enable,self.square2.enable,
+                  self.wave3.enable,self.noise4.enable,
                   true,true,true,self.power)
     }
 
@@ -850,7 +858,6 @@ impl Audio{
         self.noise4.step(clock);
         if clock%0x1fff == 0 {
                //runs at 512 hz 
-            
         }
         if clock%0x3fff == 0 {
                //runs at 256 hz
@@ -865,13 +872,9 @@ impl Audio{
         if clock%0xffff == 0 {
             self.square1.step_envelope();
             self.square2.step_envelope();
-               //run at 64 hz
-                
+               //run at 64 hz    
         }
-        /*if clock > self.next_sample{
-            self.next_sample = clock;
-            self.next_samplef = clock as f64;
-        }*/
+
         if clock >= self.next_sample{
             self.next_samplef = self.next_samplef + self.sample_len;
             self.next_sample = self.next_samplef as u32;
@@ -897,7 +900,6 @@ impl Audio{
                 if self.sound4_to_right { o += sample4;}
                 (((o * self.volume_right as f64)/16.0) as f32)
             };
-//            println!("samples {} {} {} {}",sample1,sample2,sample3,sample4);
             return Interrupt::AudioSample(out_left,out_right)
         }
         Interrupt::None
@@ -917,6 +919,19 @@ mod tests {
     #[test]
     fn registers_write_read(){
         let mut a = audio::Audio::origin();
+        
+        a.write_register(0x26,0xff);
+        for v in 0..=255{
+        for i in 0x10..=0x25{
+            a.write_register(i,v);
+            a.step(i as u32 + v as u32*256);
+            assert_eq!(a.read_register(i),v|mask[i as usize-0x10]);
+        }
+        }
+    }
+    #[test]
+    fn registers_ensure_off(){
+        let mut a = audio::Audio::origin();
         a.write_register(0x26,0xff);
         for i in 0x10..=0x25{
             a.write_register(i,0xff);
@@ -924,24 +939,33 @@ mod tests {
         for i in 0x10..=0x25{
             assert_eq!(a.read_register(i),0xff);
         }
+        a.write_register(0x26,0x00);
         for i in 0x10..=0x25{
             a.write_register(i,0x00);
+            assert_eq!(a.read_register(i),mask[i as usize - 0x10]);
+
         }
         for i in 0x10..=0x25{
-            assert_eq!(a.read_register(i),mask[(i-0x10)as usize]);
+            a.write_register(i,0xff);
+            assert_eq!(a.read_register(i),mask[i as usize - 0x10]);
+
         }
+        a.write_register(0x26,0xff);
         for i in 0x10..=0x25{
-            a.write_register(i,0x55);
-        }
-        for i in 0x10..=0x25{
-            assert_eq!(a.read_register(i),0x55 | mask[(i-0x10)as usize]);
-        }
-        for i in 0x10..=0x25{
-            a.write_register(i,0xAA);
-        }
-        for i in 0x10..=0x25{
-            assert_eq!(a.read_register(i),0xAA | mask[(i-0x10)as usize]);
+            a.write_register(i,0x00);
+            assert_eq!(a.read_register(i),mask[i as usize - 0x10]);
+
         }
     }
-    
+    #[test]
+    fn sample_ram(){
+        let mut a = audio::Audio::origin();
+        a.write_register(0x26,0xff);
+        for v in 0..=255{
+        for i in 0x30..=0x3f{
+            a.write_register(i,v);
+            assert_eq!(a.read_register(i),v);
+        }
+        }
+    }
 }
