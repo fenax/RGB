@@ -106,9 +106,9 @@ impl Noise{
         if t>=0 && t<=15{
             self.volume = t;
         }
-        if t== 0 {
+        /*if t== 0 {
             self.enable = false
-            };
+            };*/
     }
 
     pub fn change_after(&self)->u32{
@@ -361,7 +361,7 @@ impl Wave{
 //            println!("(1.0 - {}) * {} + {0} * {}",prop,last,new);
             (prop * last + (1.0 - prop) * new) 
         }else{
-            self.change_countdown -= 1;
+            self.change_countdown -= wave_clock_factor;
 //            println!("nochange {} {}",self.cursor,self.samples[(self.cursor%32) as usize]);
             self.samples[(self.cursor%32) as usize] as f32
         }
@@ -515,7 +515,7 @@ pub struct Square{
     sweep_period : u8,
     sweep_negate : bool,
     sweep_shift  : u8,
-    sweep_enable :bool,
+    //sweep_enable :bool,
     sweep_timer  : u16,
     enable: bool,
     high:bool,
@@ -546,7 +546,7 @@ impl Square{
             sweep_period:0,
             sweep_negate:true,
             sweep_shift:0,
-            sweep_enable:false,
+            //sweep_enable:false,
             sweep_timer:0,
             enable:false,
         }
@@ -597,13 +597,13 @@ impl Square{
         if t>=0 && t<=15{
             self.volume = t;
         }
-        if t== 0 {
+       /* if t== 0 {
             self.enable = false
-            };
+            };*/
     }
     pub fn step_sweep(&mut self){
-        if self.sweep_enable && self.sweep_period>0{
-            self.sweep_period -= 1;
+        if  self.sweep_timer>0 && self.sweep_shift >0{
+            self.sweep_timer -= 1;
             self.frequency = self.shadow_frequency;
             self.calculate_sweep();
         }
@@ -615,6 +615,7 @@ impl Square{
         }else{
             self.shadow_frequency.wrapping_add(t)
         };
+        println!("shadow {} new sweeped frequency {}",self.shadow_frequency,t);
         if t<0 || t>2047 {
             self.enable = false;
         }else{
@@ -633,7 +634,8 @@ impl Square{
         if self.must_trigger{
             self.last_rise = clock;
             self.shadow_frequency = self.frequency;
-            self.sweep_enable = self.sweep_period != 0 || self.sweep_shift != 0;
+            self.sweep_timer = self.sweep_period as u16;
+            //self.sweep_enable = self.sweep_period != 0 || self.sweep_shift != 0;
             self.enable = true;
             //self.next_change = clock*8 + self.toggle_after(false,clock);
             self.change_countdown = 0;
@@ -647,7 +649,9 @@ impl Square{
             }else{
                 self.length = self.set_length;
             }
-            self.calculate_sweep();
+            if  self.sweep_timer>0 && self.sweep_shift >0{
+                self.calculate_sweep();
+            }
             self.must_trigger = false;
         }
     }
@@ -674,12 +678,8 @@ impl Square{
                         - 0.5; 
 
             self.next_change = self.next_change + increment;
-            println!("TOGGLENG with {} left, {}",self.change_countdown,Square_multiplier);
             self.change_countdown = increment 
                     + self.change_countdown - Square_multiplier;
-            println!("NEXT TOGGLE IN {}, added {} for frequency {}",self.change_countdown,increment,self.frequency);
-//            println!("sound toggle in {} frequency is {} duty is {} ret is {}\n    {}*8 - {} / {}",
-//                increment, self.step_frequency(), self.duty,ret,clock,self.next_change,sample_len);
             if self.high{
                 ret
             }else{
@@ -974,29 +974,50 @@ impl Audio{
                   true,true,true,self.power)
     }
 
+    pub fn length_decr(&mut self){
+        self.square1.lenght_decr();
+        self.square2.lenght_decr();
+        self.wave3.lenght_decr();
+        self.noise4.lenght_decr();
+    }
+    pub fn sweep(&mut self){
+        self.square1.step_sweep();
+    }
+    pub fn envelope(&mut self){
+        self.square1.step_envelope();
+        self.square2.step_envelope();
+        self.noise4.step_envelope();
+    }
+
+
     pub fn step(&mut self,clock :u32)->Interrupt{
         self.square1.step(clock);
         self.square2.step(clock);
         self.wave3.step(clock);
         self.noise4.step(clock);
         if clock%0x1fff == 0 {
+            match clock%0xffff >> (4+4+4+1){
+                0 => {self.length_decr();},
+                1 => {},
+                2 => {self.length_decr();              self.sweep();},
+                3 => {},
+                4 => {self.length_decr();                           },
+                5 => {},
+                6 => {self.length_decr();              self.sweep();},
+                7 => {                   self.envelope();},
+                _ => {},
+            }
+            
                //runs at 512 hz 
         }
         if clock%0x3fff == 0 {
                //runs at 256 hz
-            self.square1.lenght_decr();
-            self.square2.lenght_decr();
-            self.wave3.lenght_decr();
-            self.noise4.lenght_decr();
         }
         if clock%0x7fff == 0 {
                //runs at 128 hz
             self.square1.step_sweep();
         }
         if clock%0xffff == 0 {
-            self.square1.step_envelope();
-            self.square2.step_envelope();
-            self.noise4.step_envelope();
                //run at 64 hz    
         }
 
