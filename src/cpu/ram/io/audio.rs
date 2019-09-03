@@ -446,7 +446,7 @@ impl Wave{
     }
     pub fn write_frequency_hi(&mut self, v:u8){
         self.frequency &= 0xff;
-        self.frequency |= ((v&0x3) as u16)<<8;
+        self.frequency |= ((v&0x7) as u16)<<8;
         self.must_trigger = v&0x80 != 0;
         self.length_enable = v&0x40 != 0;
         if Audio_Debug{
@@ -489,7 +489,7 @@ impl Wave{
         }
     }}
 
-const Square_multiplier:u32 = 4;
+const Square_multiplier:u32 = 1;
 
 pub struct Square{
     //Frequency = 4194304/(32*(2048-x)) Hz
@@ -621,7 +621,7 @@ impl Square{
             self.shadow_frequency = t;
         }
     }
-  
+
     pub fn step(&mut self,clock:u32){
         if self.enable{
             self.sample_count += 1;
@@ -635,7 +635,10 @@ impl Square{
             self.shadow_frequency = self.frequency;
             self.sweep_enable = self.sweep_period != 0 || self.sweep_shift != 0;
             self.enable = true;
-            self.next_change = clock*8 + self.toggle_after(false,clock);
+            //self.next_change = clock*8 + self.toggle_after(false,clock);
+            self.change_countdown = 0;
+            self.high = false;
+            self.change();
             self.volume = self.envelope_volume;
             self.period = self.envelope_period;
             //self.change(clock);
@@ -649,7 +652,7 @@ impl Square{
         }
     }
 
-    pub fn toggle_after(&self, level:bool,clock_time:u32)->u32{
+    pub fn toggle_after(&self, level:bool)->u32{
         self.step_frequency() * match(level,self.duty){
             (true,0) => 1,
             (true,1) => 2,
@@ -666,12 +669,15 @@ impl Square{
     pub fn change(&mut self)->f32{
         if Square_multiplier>self.change_countdown{
             self.high = !self.high;
-            let increment = self.toggle_after(self.high, self.next_change);
-            let ret = (self.change_countdown as f32 - Square_multiplier as f32/2.0)/Square_multiplier as f32; 
-            //let ret = (clock*8 - self.next_change) as f64/(sample_len *8.0);
+            let increment = self.toggle_after(self.high);
+            let ret = self.change_countdown as f32 /Square_multiplier as f32
+                        - 0.5; 
 
             self.next_change = self.next_change + increment;
-            self.change_countdown = increment + self.change_countdown - Square_multiplier;
+            println!("TOGGLENG with {} left, {}",self.change_countdown,Square_multiplier);
+            self.change_countdown = increment 
+                    + self.change_countdown - Square_multiplier;
+            println!("NEXT TOGGLE IN {}, added {} for frequency {}",self.change_countdown,increment,self.frequency);
 //            println!("sound toggle in {} frequency is {} duty is {} ret is {}\n    {}*8 - {} / {}",
 //                increment, self.step_frequency(), self.duty,ret,clock,self.next_change,sample_len);
             if self.high{
@@ -756,7 +762,7 @@ impl Square{
         self.frequency &= 0xff00;
         self.frequency |= v as u16;
         if Audio_Debug{
-            println!("write half frequency");
+            println!("write half frequency {:02x}",v);
         }
     }
     pub fn read_frequency_lo(&self)->u8{
@@ -764,7 +770,7 @@ impl Square{
     }
     pub fn write_frequency_hi(&mut self, v:u8){
         self.frequency &= 0xff;
-        self.frequency |= ((v&0x3) as u16)<<8;
+        self.frequency |= ((v&0x7) as u16)<<8;
         self.must_trigger = v&0x80 != 0;
         self.length_enable = v&0x40 != 0;
         if Audio_Debug{
