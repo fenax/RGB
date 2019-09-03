@@ -968,6 +968,10 @@ pub fn instruct(ram : &mut Ram, reg : &mut Registers, alu: &mut Alu)
         //JR r8
         0x18 => {
             let arg1 = u8toi16(read_op(ram,reg));
+            if arg1 == 0xfffe{
+                panic!("infinite loop");
+                //TODO should not stay, could still be interrupted
+            }
             reg.PC = reg.PC.wrapping_add(arg1);
             CpuState::Wait(2)
         },
