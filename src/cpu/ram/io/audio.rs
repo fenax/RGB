@@ -3,7 +3,7 @@ use cpu::*;
 use cpu::ram::Ram;
 
 
-const Audio_Debug :bool = true;
+const Audio_Debug :bool = false;
 
 /*
      NRx0 NRx1 NRx2 NRx3 NRx4

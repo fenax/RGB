@@ -40,8 +40,20 @@ pub enum EmuKeys{
     Select,
 }
 
+#[derive(Debug)]
+pub enum EmuCommand{
+    Quit,
+    Audio1(Option<bool>),
+    Audio2(Option<bool>),
+    Audio3(Option<bool>),
+    Audio4(Option<bool>),
+    
+}
+
+#[derive(Debug)]
 pub enum ToEmu{
     Tick,
+    Command(EmuCommand),
     KeyDown(EmuKeys),
     KeyUp(EmuKeys),
 }
@@ -74,6 +86,7 @@ impl Gameboy{
             ToEmu::Tick => self.got_tick = true,
             ToEmu::KeyDown(k) => self.ram.joypad.press_key(k), 
             ToEmu::KeyUp(k) =>   self.ram.joypad.up_key(k),
+            _ => {println!("{:?}",t)},
         }
     }
 
