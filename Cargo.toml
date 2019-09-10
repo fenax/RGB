@@ -3,6 +3,8 @@ name = "RGB"
 version = "0.1.0"
 authors = ["kasil <kasil@loutre.info>"]
 
+include = ["resources/DejaVuSansMono.ttf","resources/auto.png","resources/no.png","resources/yes.png"]
+
 [dependencies]
 ggez = "0.5"
 nalgebra = "0.18"
