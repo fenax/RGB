@@ -86,6 +86,14 @@ impl Gameboy{
             ToEmu::Tick => self.got_tick = true,
             ToEmu::KeyDown(k) => self.ram.joypad.press_key(k), 
             ToEmu::KeyUp(k) =>   self.ram.joypad.up_key(k),
+            ToEmu::Command(EmuCommand::Audio1(v)) 
+                => self.ram.audio.override_sound1 = v,
+            ToEmu::Command(EmuCommand::Audio2(v))
+                => self.ram.audio.override_sound2 = v,
+            ToEmu::Command(EmuCommand::Audio3(v))
+                => self.ram.audio.override_sound3 = v,
+            ToEmu::Command(EmuCommand::Audio4(v))
+                => self.ram.audio.override_sound4 = v,
             _ => {println!("{:?}",t)},
         }
     }

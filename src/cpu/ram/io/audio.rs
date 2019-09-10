@@ -829,6 +829,11 @@ pub struct Audio{
     sound2_to_right:bool,
     sound3_to_right:bool,
     sound4_to_right:bool,
+
+    pub override_sound1:Option<bool>,
+    pub override_sound2:Option<bool>,
+    pub override_sound3:Option<bool>,
+    pub override_sound4:Option<bool>,
 }
 
 impl Audio{
@@ -859,6 +864,10 @@ impl Audio{
             sound3_to_right:true,
             sound4_to_right:true,
 
+            override_sound1:None,
+            override_sound2:None,
+            override_sound3:None,
+            override_sound4:None,
         }
     }
     
@@ -1032,21 +1041,37 @@ impl Audio{
 
             let out_left = {
                 let mut o = 0.0;
-                if self.sound1_to_left { o+= sample1 ;}
-                if self.sound2_to_left { o+= sample2 ;}
-                if self.sound3_to_left { o+= sample3 ;}
-                if self.sound4_to_left { o+= sample4 ;}
+                if self.override_sound1.unwrap_or(self.sound1_to_left){
+                    o += sample1;
+                }
+                if self.override_sound2.unwrap_or(self.sound2_to_left){
+                    o += sample2;
+                }
+                if self.override_sound3.unwrap_or(self.sound3_to_left){
+                    o += sample3;
+                }
+                if self.override_sound4.unwrap_or(self.sound4_to_left){
+                    o += sample4;
+                }
                 (((o * self.volume_left as f32)/16.0) as f32)
             };
             let out_right = {
                 let mut o = 0.0;
-                if self.sound1_to_right { o += sample1;}
-                if self.sound2_to_right { o += sample2;}
-                if self.sound3_to_right { o += sample3;}
-                if self.sound4_to_right { o += sample4;}
+                if self.override_sound1.unwrap_or(self.sound1_to_right){ 
+                    o += sample1;
+                }
+                if self.override_sound2.unwrap_or(self.sound2_to_right){ 
+                    o += sample2;
+                }
+                if self.override_sound3.unwrap_or(self.sound3_to_right){ 
+                    o += sample3;
+                }
+                if self.override_sound4.unwrap_or(self.sound4_to_right){
+                    o += sample4;
+                }
                 (((o * self.volume_right as f32)/16.0) as f32)
             };
-//            println!("AUDIO SAMPLES {} {} {} {}",sample1,sample2,sample3,sample4);
+//          println!("AUDIO SAMPLES {} {} {} {}",sample1,sample2,sample3,sample4);
             return Interrupt::AudioSample(out_left,out_right)
         }
         Interrupt::None
