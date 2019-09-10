@@ -1,6 +1,8 @@
 use std::io;
 use std::io::prelude::*;
 use std::fs::File;
+use std::fs::OpenOptions;
+
 
 #[derive(Debug)]
 pub enum Mbc{
@@ -36,6 +38,8 @@ pub struct Cartridge{
     pub ramswitch:Vec<[u8;0x2000]>,
     pub cur_ram:usize,
     pub cur_rom:usize,
+    filename:String,
+    savefile:String,
 }
 
 impl Default for Cartridge{
@@ -52,12 +56,25 @@ impl Default for Cartridge{
             ramswitch : Vec::new(),
             cur_ram : 0,
             cur_rom : 0,
+            filename:String::new(),
+            savefile:String::new(),
         }
     }
 }
 impl Cartridge{
     pub fn new(file:&str) -> Cartridge{
         let mut c = Cartridge::default();
+        c.filename.push_str(file);
+        match c.filename.rfind('.'){
+            Some(i) => {
+                c.savefile.push_str(&c.filename[0..i]);
+            },
+            None => {
+                c.savefile.push_str(&c.filename);
+            }
+        }
+        c.savefile.push_str(".sav");
+
         let mut f = match File::open(file){
             Ok(v) => v,
             Err(e)=> panic!("cant open file {}",file)
@@ -77,6 +94,14 @@ impl Cartridge{
         for i in 0..c.get_ram_bank_count(){
             let mut sram: [u8;0x2000] = [0;0x2000];
             c.ramswitch.push(sram);
+        }
+        match File::open(&c.savefile){
+            Ok(mut v)=>{
+                for bank in &mut c.ramswitch{
+                    v.read_exact( bank).expect("failed to read save");
+                }
+            }
+            Err(e)=>println!("failed to open save file {:?}",e),
         }
 
         match c.rom[0x147]{
@@ -277,4 +302,14 @@ impl Cartridge{
 
     }
 
+    pub fn save(&self){
+        match OpenOptions::new().write(true).create(true).open(&self.savefile){
+            Ok(mut v)=>{
+                for bank in &self.ramswitch{
+                    v.write_all(bank).expect("failed to write save");
+                }
+            }
+            Err(e)=>panic!("failed to open save file {:?}",e),
+        }
+    }
 }

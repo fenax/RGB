@@ -40,14 +40,14 @@ pub enum EmuKeys{
     Select,
 }
 
-#[derive(Debug)]
+#[derive(Debug,Clone)]
 pub enum EmuCommand{
     Quit,
     Audio1(Option<bool>),
     Audio2(Option<bool>),
     Audio3(Option<bool>),
     Audio4(Option<bool>),
-    
+    Save,
 }
 
 #[derive(Debug)]
@@ -94,6 +94,8 @@ impl Gameboy{
                 => self.ram.audio.override_sound3 = v,
             ToEmu::Command(EmuCommand::Audio4(v))
                 => self.ram.audio.override_sound4 = v,
+            ToEmu::Command(EmuCommand::Save)
+                => self.ram.cart.save(),
             _ => {println!("{:?}",t)},
         }
     }

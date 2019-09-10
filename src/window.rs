@@ -105,6 +105,26 @@ impl Widget for TriButton{
     }
 }
 
+pub struct ActionButton{
+    position: Point2<f32>,
+    icon:graphics::Image,
+    action:EmuCommand,
+}
+
+impl Widget for ActionButton{
+    fn click(&mut self, x:f32,y:f32)->Option<ToEmu>{
+        if (x>= self.position.x && x< self.position.x+16.0)
+            && (y >= self.position.y && y < self.position.y+16.0){
+                return Some(ToEmu::Command(self.action.clone()))
+            }
+        None        
+    }
+    fn draw(&self,ctx:&mut Context,res: &Resources){
+        graphics::draw(ctx,&self.icon,
+            graphics::DrawParam::default().dest(self.position));
+    }
+}
+
 impl Window {
     pub fn new( _ctx: &mut Context,
                 rx:mpsc::Receiver<([u8;160*144],
@@ -150,6 +170,14 @@ impl Window {
                     Some(ToEmu::Command(EmuCommand::Audio4(button.state)))
                 })
             }));
+        
+        widgets.push(Box::new(
+            ActionButton{
+                position:Point2::new(256.0,256.0+144.0+64.0),
+                action: EmuCommand::Save,
+                icon: graphics::Image::new(_ctx,"/floppy-icon.png").expect("failed"),
+            }
+        ));
 
 
         Window {
