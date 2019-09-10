@@ -417,24 +417,23 @@ impl Video{
             let index = self.line as usize*160 + i;
             let pal = if s.palette{  &self.sprite_palette_1
                              }else{  &self.sprite_palette_0 };
+            let mut px = *b;
+            if !w.transparent {px = w.color};
+
             self.back_buffer[index] = 
-            if w.transparent{
                 if s.behind_bg{
-                    if *b == 0 && s.color != 0{
+                    if px == 0 && s.color != 0{
                         pal[s.color as usize-1]
                     }else{
-                        self.background_palette[*b as usize]
+                        self.background_palette[px as usize]
                     }
                 }else{
                     if s.color != 0{
                         pal[s.color as usize-1]
                     }else{
-                        self.background_palette[*b as usize] 
+                        self.background_palette[px as usize] 
                     }
-                }
-            }else{
-                self.background_palette[w.color as usize]
-            };
+                };
         }
     }
 
