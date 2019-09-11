@@ -5,17 +5,15 @@ extern crate byteorder;
 #[macro_use]
 extern crate itertools;
 
-use ggez::{graphics, Context, ContextBuilder, GameResult, conf};
-use ggez::event::{self, EventHandler};
+use ggez::{ContextBuilder, conf};
+use ggez::event;
 
 use std::thread;
 
 use std::sync::mpsc;
 
 use std::io;
-use std::io::prelude::*;
 use std::fs::File;
-use std::time::{Instant, Duration};
 
 use psimple::Simple;
 use pulse::stream::Direction;
@@ -69,14 +67,12 @@ struct Gameboy{
 }
 impl Gameboy{
     fn origin(cart:cpu::cartridge::Cartridge) -> Gameboy{
-        let mut r = Gameboy{
+        Gameboy{
             ram : cpu::ram::Ram::origin(cart),
             reg : cpu::registers::Registers::origin(),
             alu : cpu::alu::Alu::origin(),
             got_tick : false,
-        };
-       // r.reg.PC=0x100;
-        r
+        }
     }
 
 
@@ -109,20 +105,6 @@ impl Gameboy{
         }
     }
 
-    fn wait_for_vsync(&mut self, rx:&mut mpsc::Receiver<ToEmu>){
-        if self.got_tick{
-            self.got_tick = false;
-            return
-        }
-        loop{
-            match rx.recv(){
-                Ok(ToEmu::Tick) => return,
-                Ok(anything) => self.process_to_emu(anything),
-                Err(_) => panic!("died on recv"),
-            }
-        }
-    }
-
     fn main_loop(&mut self, mut rx: mpsc::Receiver<ToEmu>,
                             mut tx: mpsc::Sender<([u8;160*144],
                                                     Vec<u8>,
@@ -133,22 +115,14 @@ impl Gameboy{
     {
         let mut clock = 0 as u32;
         let mut cpu_wait = 0;
-        let mut frame_start = Instant::now();
         let mut buffer_index = 0;
         let mut buffer = [0;1024*2*mem::size_of::<f64>()];
-/*        let mut timing = std::vec::Vec::new();
-        let mut vblanks = std::vec::Vec::new();
-        let mut apush   = std::vec::Vec::new();*/
         let mut file = File::create("out.pcm").ok().unwrap();
         let mut halted = false;
         s.write(&buffer);
 
         loop {
-/*            timing.push(std::time::Instant::now());
-            if timing.len() > 10000000{
-                break;
-            }*/
-           clock = clock.wrapping_add(1);
+            clock = clock.wrapping_add(1);
             if !halted{
                 if cpu_wait == 0{
 //                    print!("\n{}{}",self.alu,self.reg);
@@ -191,8 +165,10 @@ impl Gameboy{
                     let size = mem::size_of::<f32>();
                     let index = buffer_index*2*size;
                     let index2 = (buffer_index*2+1)*size;
-                    buffer[index..index+size].as_mut().write_f32::<LittleEndian>(l as f32);
-                    buffer[index2..index2+size].as_mut().write_f32::<LittleEndian>(r as f32);
+                    buffer[index..index+size].as_mut().write_f32::<LittleEndian>(l as f32)
+                        .expect("failed to convert sound sample shape");
+                    buffer[index2..index2+size].as_mut().write_f32::<LittleEndian>(r as f32)
+                        .expect("failed to convert sound sample shape");
                     //TODO stereo
                     buffer_index += 1;
                     if buffer_index*2*size >= buffer.len(){
@@ -241,46 +217,14 @@ impl Gameboy{
                     m.extend_from_slice(&self.ram.hram);
                     tx.send((self.ram.video.back_buffer,m,w0, w1, set)).unwrap();
                     self.ram.video.clear_update();
-//                    vblanks.push(std::time::Instant::now());
                 } ,
                 cpu::ram::io::Interrupt::VBlankEnd =>{
                     self.try_read_all(&mut rx);
- //                   println!("LATENCY {:?}",s.get_latency());
- //                   thread::sleep(frame_end - Instant::now());
- //                   frame_start = frame_end;
                 }
                 _ => {},
             };
-
-           //if clock > 100000000 {break}
-           if clock%0x1fff == 0 {
-               //runs at 512 hz
-           }
-           if clock%0x3fff == 0 {
-               //runs at 256 hz
-
-           }
-           if clock%0x7fff == 0 {
-               //runs at 128 hz
-           }
-           if clock%0xffff == 0 {
-               //run at 64 hz
-                
-           }
         }
-        /*
-        for i in 1..timing.len(){
-            println!("{},",(timing[i]-timing[i-1]).as_nanos())
-        }
-        println!("%%%%% VBLANK");
-        for i in 0..vblanks.len(){
-            println!("{},",(vblanks[i]-timing[0]).as_nanos());
-        }
-        println!("%%%%% PULSE");
-        for i in 0..apush.len(){
-            println!("{},",(apush[i]-timing[0]).as_nanos());
-        }*/
-        println!("stopped at pc = {:04x}",self.reg.PC);
+        println!("stopped at pc = {:04x}",self.reg.pc);
     }
 }
 fn main() -> io::Result<()>{
@@ -325,16 +269,11 @@ fn main() -> io::Result<()>{
     .spawn(move|| {
         gb.main_loop(inbox_emulator,to_window,s);
 
-    });
+    }).expect("failed to spawn thread");
 
         match event::run(&mut ctx, &mut event_loop, &mut window) {
             Ok(_) => println!("Exited cleanly."),
             Err(e) => println!("Error occured: {}", e)
         }
-
-
-    // read exactly 10 bytes
     Ok(())
-
-    
 }

@@ -1,4 +1,3 @@
-use std::io;
 use std::io::prelude::*;
 use std::fs::File;
 use std::fs::OpenOptions;
@@ -77,22 +76,22 @@ impl Cartridge{
 
         let mut f = match File::open(file){
             Ok(v) => v,
-            Err(e)=> panic!("cant open file {}",file)
+            Err(e)=> panic!("cant open file {} {:?}",file,e)
         };
         match f.read_exact(&mut c.rom){
             Ok(_) => {},
-            Err(e) => panic!("failed reading first part of rom"),
+            Err(e) => panic!("failed reading first part of rom{:?}",e),
         }
         for i in 1..c.get_rom_bank_count(){
             let mut srom: [u8;0x4000] = [0;0x4000];
             println!("Read Bank {}",i);
             match f.read_exact(&mut srom){
                 Ok(_) =>{ c.romswitch.push(srom);},
-                Err(e)=>panic!("Failed reading bank {}",i),
+                Err(e)=>panic!("Failed reading bank {} {:?}",i,e),
             }
         }
-        for i in 0..c.get_ram_bank_count(){
-            let mut sram: [u8;0x2000] = [0;0x2000];
+        for _ in 0..c.get_ram_bank_count(){
+            let sram: [u8;0x2000] = [0;0x2000];
             c.ramswitch.push(sram);
         }
         match File::open(&c.savefile){

@@ -1,5 +1,4 @@
 use cpu::ram::io::*;
-use cpu::*;
 use cpu::ram::Ram;
 use std::cmp::Ordering;
 
@@ -186,25 +185,6 @@ impl Video{
         self.updated_tiles = false;
         self.updated_map_1 = false;
         self.updated_map_2 = false;
-    }
-
-    fn read_tile(& self, tile:u8, subline:u16)->(u8,u8){
-        let bg_tile_data:u16 =
-            if self.tile_set {
-                0x0000
-            }else{
-                0x1000
-            };
-        let tile_offset = 
-            if self.tile_set {
-                bg_tile_data + tile as u16*16
-            }else{
-                bg_tile_data.wrapping_add(u8toi16(tile)*16)
-            } + subline*2;
-        let tile_offset = tile_offset as usize;
-        let l = self.vram[tile_offset];
-        let h = self.vram[tile_offset+1];
-        (l,h)
     }
 
     fn draw_window(&mut self)->[WindowPixel;160]{

@@ -1,9 +1,7 @@
 use cpu::ram::io::*;
-use cpu::*;
-use cpu::ram::Ram;
 
 
-const Audio_Debug :bool = true;
+const AUDIO_DEBUG :bool = true;
 
 /*
      NRx0 NRx1 NRx2 NRx3 NRx4
@@ -104,7 +102,7 @@ impl Noise{
             }else{
                 self.volume.wrapping_sub(1)
             };
-            if t>=0 && t<=15{
+            if t<=15{
                 self.volume = t;
                 if t == 0 {self.enable = false;}
             }
@@ -174,22 +172,6 @@ impl Noise{
         }
     }
 
-    pub fn change(&mut self)->f32{
-        if self.sample_count == 0{
-            if self.high{
-                0.5
-            }else{
-                -0.5
-            }
-        }else{
-            let ret = self.sample_total as f32 / self.sample_count as f32;
-            self.sample_total = 0.0;
-            self.sample_count = 0;
-            ret - 0.5
-        }
-    }
-
-
     pub fn step_sample(&mut self)->f32{
         let ret = self.sample_total as f32 / self.sample_count as f32;
         self.sample_total = 0.0;
@@ -208,8 +190,8 @@ impl Noise{
 
 
     pub fn write_lp(&mut self, v:u8){
-        self.set_length = (v&0x3f);
-        if Audio_Debug{
+        self.set_length = v&0x3f;
+        if AUDIO_DEBUG{
             println!("write length {}",self.set_length);
         }
     }
@@ -223,7 +205,7 @@ impl Noise{
                 v&0x8 != 0;
         self.envelope_period = 
                 v&0x7;
-        if Audio_Debug{
+        if AUDIO_DEBUG{
             println!("write envelope {} {} {}",self.envelope_volume,
             self.envelope_add_mode,self.envelope_period);
         }
@@ -241,7 +223,7 @@ impl Noise{
                 v&0x8 != 0;
         self.divisor_code = 
                 v&0x7;
-        if Audio_Debug{
+        if AUDIO_DEBUG{
            println!("write shift reg {} {} {}",self.clock_shift,
             self.width_mode,self.divisor_code);
         }
@@ -255,7 +237,7 @@ impl Noise{
     pub fn write_frequency_hi(&mut self, v:u8){
         self.must_trigger = v&0x80 != 0;
         self.length_enable = v&0x40 != 0;
-        if Audio_Debug{
+        if AUDIO_DEBUG{
             println!("write triggers{}{}",
             self.must_trigger,self.length_enable);
         }
@@ -284,7 +266,7 @@ impl Noise{
         }
     }}
 
-const wave_clock_factor :u32 =  2;
+const WAVE_CLOCK_FACTOR :u32 =  2;
 pub struct Wave{
     frequency:u16,
     volume:f64,
@@ -356,14 +338,14 @@ impl Wave{
     }
 
     pub fn change(&mut self)->f32{
-        if wave_clock_factor>self.change_countdown{
+        if WAVE_CLOCK_FACTOR>self.change_countdown{
             self.cursor += 1;
             let increment = self.step_frequency();
 
-            let prop = self.change_countdown as f32 / wave_clock_factor as f32;
+            let prop = self.change_countdown as f32 / WAVE_CLOCK_FACTOR as f32;
 
             self.next_change = self.next_change + increment;
-            self.change_countdown = increment + self.change_countdown - wave_clock_factor;
+            self.change_countdown = increment + self.change_countdown - WAVE_CLOCK_FACTOR;
 //            println!("sound toggle in {} frequency is {} duty is {}",
 //                increment, self.step_frequency(), self.duty);
             let last = self.samples[((self.cursor-1)%32) as usize] as f32;
@@ -372,7 +354,7 @@ impl Wave{
 //            println!("(1.0 - {}) * {} + {0} * {}",prop,last,new);
             (prop * last + (1.0 - prop) * new) 
         }else{
-            self.change_countdown -= wave_clock_factor;
+            self.change_countdown -= WAVE_CLOCK_FACTOR;
 //            println!("nochange {} {}",self.cursor,self.samples[(self.cursor%32) as usize]);
             self.samples[(self.cursor%32) as usize] as f32
         }
@@ -402,7 +384,7 @@ impl Wave{
 
         if self.must_trigger{
             self.enable = true;
-            self.next_change = clock*wave_clock_factor+self.step_frequency();
+            self.next_change = clock*WAVE_CLOCK_FACTOR+self.step_frequency();
             //self.change(clock);
             self.length = 256 - self.set_length as u16;
             
@@ -418,7 +400,7 @@ impl Wave{
             3 => 0.25,
             _ => panic!("impossible"),
         };
-        if Audio_Debug{
+        if AUDIO_DEBUG{
             println!("write volume {} ",self.volume);
         };
     }
@@ -427,7 +409,7 @@ impl Wave{
     }
     pub fn write_power(&mut self, v:u8){
         self.power = v & 0x80 != 0;
-        if Audio_Debug{
+        if AUDIO_DEBUG{
             println!("write power {} ",self.power);
         }
     }
@@ -436,7 +418,7 @@ impl Wave{
     }
     pub fn write_lp(&mut self, v:u8){
         self.set_length = v;
-        if Audio_Debug{
+        if AUDIO_DEBUG{
             println!("write length {} ",self.set_length);
         }
     }
@@ -447,7 +429,7 @@ impl Wave{
     pub fn write_frequency_lo(&mut self, v:u8){
         self.frequency &= 0xff00;
         self.frequency |= v as u16;
-        if Audio_Debug{
+        if AUDIO_DEBUG{
             println!("write half frequency");
         }
     }
@@ -459,7 +441,7 @@ impl Wave{
         self.frequency |= ((v&0x7) as u16)<<8;
         self.must_trigger = v&0x80 != 0;
         self.length_enable = v&0x40 != 0;
-        if Audio_Debug{
+        if AUDIO_DEBUG{
             println!("write other half frequency {}{}{}",self.frequency,
             self.must_trigger,self.length_enable);
         }
@@ -470,7 +452,7 @@ impl Wave{
     pub fn write_sample_ram(&mut self, a:u16, v:u8){
         self.samples[(a*2) as usize] = v >> 4;
         self.samples[(a*2) as usize +1] = v & 0xf;
-        if Audio_Debug{
+        if AUDIO_DEBUG{
             println!("write in sample ram");
         }
     }
@@ -499,7 +481,7 @@ impl Wave{
         }
     }}
 
-const Square_multiplier:u32 = 1;
+const SQUARE_MULTIPLIER:u32 = 1;
 
 pub struct Square{
     //Frequency = 4194304/(32*(2048-x)) Hz
@@ -515,8 +497,6 @@ pub struct Square{
     envelope_add_mode: bool,
     envelope_period : u8,
     envelope_timer:u8,
-    period:u8,
-    trigger : bool,
     must_trigger : bool,
     length_enable : bool,
     duty : u8,
@@ -547,8 +527,6 @@ impl Square{
             envelope_add_mode : false,
             envelope_period:3,
             envelope_timer:3,
-            period:0,
-            trigger : false,
             must_trigger: false,
             high :false,
             length_enable :false,
@@ -602,7 +580,7 @@ impl Square{
             }else{
                 self.volume.wrapping_sub(1)
             };
-            if t>=0 && t<=15{
+            if t<=15{
                 self.volume = t;
                 if t == 0 {self.enable = false;}
             }
@@ -630,7 +608,7 @@ impl Square{
         }else{
             self.shadow_frequency.wrapping_add(t)
         };
-        if t<0 || t>2047 {
+        if t>2047 {
             self.enable = false;
         }else{
             self.shadow_frequency = t;
@@ -681,22 +659,22 @@ impl Square{
     }
 
     pub fn change(&mut self)->f32{
-        if Square_multiplier>self.change_countdown{
+        if SQUARE_MULTIPLIER>self.change_countdown{
             self.high = !self.high;
             let increment = self.toggle_after(self.high);
-            let ret = self.change_countdown as f32 /Square_multiplier as f32
+            let ret = self.change_countdown as f32 /SQUARE_MULTIPLIER as f32
                         - 0.5; 
 
             self.next_change = self.next_change + increment;
             self.change_countdown = increment 
-                    + self.change_countdown - Square_multiplier;
+                    + self.change_countdown - SQUARE_MULTIPLIER;
             if self.high{
                 ret
             }else{
                  - ret
             }
         }else{
-            self.change_countdown -= Square_multiplier;
+            self.change_countdown -= SQUARE_MULTIPLIER;
             if self.high{
                 0.5
             }else{
@@ -723,7 +701,7 @@ impl Square{
         self.sweep_period = (v >> 4) & 0x7;
         self.sweep_negate = (v & 0x8) != 0;
         self.sweep_shift  = v & 0x7;
-        if Audio_Debug{
+        if AUDIO_DEBUG{
             println!("write sweep period {} negate {} shift {}",
                 self.sweep_period,self.sweep_negate,self.sweep_shift);
         }
@@ -736,13 +714,13 @@ impl Square{
     }
     pub fn write_lp(&mut self, v:u8){
         self.duty = (v >> 6) & 0x3;
-        self.set_length = (v&0x3f);
+        self.set_length = v&0x3f;
         if self.set_length == 0{
             self.length = 63;
         }else{
             self.length = self.set_length;
         }
-        if Audio_Debug{
+        if AUDIO_DEBUG{
             println!("write length {} duty {}",
                     self.set_length,self.duty);
         }
@@ -757,7 +735,7 @@ impl Square{
                 v&0x8 != 0;
         self.envelope_period = 
                 v&0x7;
-        if Audio_Debug{
+        if AUDIO_DEBUG{
             println!("write envelope {} {} {}",self.envelope_volume,
             self.envelope_add_mode,self.envelope_period);
         }
@@ -771,7 +749,7 @@ impl Square{
     pub fn write_frequency_lo(&mut self, v:u8){
         self.frequency &= 0xff00;
         self.frequency |= v as u16;
-        if Audio_Debug{
+        if AUDIO_DEBUG{
             println!("write half frequency {:02x}",v);
         }
     }
@@ -783,7 +761,7 @@ impl Square{
         self.frequency |= ((v&0x7) as u16)<<8;
         self.must_trigger = v&0x80 != 0;
         self.length_enable = v&0x40 != 0;
-        if Audio_Debug{
+        if AUDIO_DEBUG{
             println!("write other half frequency {:02x} {}{}{}",v,self.frequency,
                 self.must_trigger,self.length_enable);
         }
@@ -823,7 +801,6 @@ pub struct Audio{
     pub square2 : Square,
     pub wave3   : Wave,
     pub noise4  : Noise,
-    out_frequency :u32,
 
     volume_left:u8,
     volume_right:u8,
@@ -857,7 +834,6 @@ impl Audio{
             square2:Square::origin(),
             wave3:Wave::origin(),
             noise4:Noise::origin(),
-            out_frequency : 44100,
 
             volume_left: 7,
             volume_right: 7,
@@ -889,25 +865,25 @@ impl Audio{
                 if self.power{
                     match a{
                         0x10...0x14 => {
-                            if Audio_Debug{
+                            if AUDIO_DEBUG{
                                 print!("SQUARE 1 ");
                             }
                             self.square1.write_register(a-0x10,v);
                         },
                         0x16...0x19 => {
-                            if Audio_Debug{
+                            if AUDIO_DEBUG{
                                 print!("SQUARE 2 ");
                             }
                             self.square2.write_register(a-0x15,v);
                         },
                         0x1a...0x1e => {
-                            if Audio_Debug{
+                            if AUDIO_DEBUG{
                                 print!("WAVE ");
                             }
                             self.wave3.write_register(a-0x1a,v);
                         },
                         0x20...0x23 => {
-                            if Audio_Debug{
+                            if AUDIO_DEBUG{
                                 print!("NOISE ");
                             }
                             self.noise4.write_register(a-0x1f,v);
@@ -938,7 +914,7 @@ impl Audio{
         self.right_enable =bit(v,3);
         self.volume_left = bits(v,4,3);
         self.volume_right= bits(v,0,3);
-        if Audio_Debug{
+        if AUDIO_DEBUG{
             println!("setting volume left:{}:{} Right:{}:{}",self.left_enable,
                self.volume_left,self.right_enable,self.volume_right);
         }
@@ -980,7 +956,7 @@ impl Audio{
             self.write_stereo_volume(0x00);
             self.write_output_selection(0x00);
         }
-        if Audio_Debug{
+        if AUDIO_DEBUG{
             println!("setting audio power to {}",self.power);
         }
     }
@@ -1085,7 +1061,7 @@ impl Audio{
 #[cfg(test)]
 mod tests {
     use cpu::ram::io::audio;
-    const mask:[u8;22] = 
+    const MASK:[u8;22] = 
                  [0x80, 0x3F, 0x00, 0xFF, 0xBF, 0xFF, 0x3F, 0x00, 0xFF, 0xBF,
                   0x7F, 0xFF, 0x9F, 0xFF, 0xBF, 0xFF, 0xFF, 0x00, 0x00, 0xBF,
                   0x00, 0x00];
@@ -1098,7 +1074,7 @@ mod tests {
         for i in 0x10..=0x25{
             a.write_register(i,v);
             a.step(i as u32 + v as u32*256);
-            assert_eq!(a.read_register(i),v|mask[i as usize-0x10]);
+            assert_eq!(a.read_register(i),v|MASK[i as usize-0x10]);
         }
         }
     }
@@ -1115,18 +1091,18 @@ mod tests {
         a.write_register(0x26,0x00);
         for i in 0x10..=0x25{
             a.write_register(i,0x00);
-            assert_eq!(a.read_register(i),mask[i as usize - 0x10]);
+            assert_eq!(a.read_register(i),MASK[i as usize - 0x10]);
 
         }
         for i in 0x10..=0x25{
             a.write_register(i,0xff);
-            assert_eq!(a.read_register(i),mask[i as usize - 0x10]);
+            assert_eq!(a.read_register(i),MASK[i as usize - 0x10]);
 
         }
         a.write_register(0x26,0xff);
         for i in 0x10..=0x25{
             a.write_register(i,0x00);
-            assert_eq!(a.read_register(i),mask[i as usize - 0x10]);
+            assert_eq!(a.read_register(i),MASK[i as usize - 0x10]);
 
         }
     }

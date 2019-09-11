@@ -1,9 +1,9 @@
 extern crate nalgebra;
 
-use ggez::{graphics, Context, ContextBuilder, GameResult, conf, timer, input};
-use ggez::event::{self, EventHandler};
+use ggez::{graphics, Context, GameResult, input};
+use ggez::event::{EventHandler};
 use std::sync::mpsc;
-use self::nalgebra::{Point2,Vector2};
+use self::nalgebra::{Point2};
 use ToEmu;
 use EmuCommand;
 use EmuKeys;
@@ -11,7 +11,7 @@ use ggez::input::keyboard::{KeyMods,KeyCode};
 
 trait Widget{
     fn click(&mut self,x:f32,y:f32)->Option<ToEmu>;
-    fn draw(&self,ctx:&mut Context,_res:&Resources){
+    fn draw(&self,_ctx:&mut Context,_res:&Resources){
 
     }
 }
@@ -101,7 +101,8 @@ impl Widget for TriButton{
                 Some(true) =>   &res.img_yes,
                 Some(false) =>  &res.img_no,
             },
-            graphics::DrawParam::default().dest(self.position));
+            graphics::DrawParam::default().dest(self.position)
+        ).expect("tri button draw failed");
     }
 }
 
@@ -119,9 +120,10 @@ impl Widget for ActionButton{
             }
         None        
     }
-    fn draw(&self,ctx:&mut Context,res: &Resources){
+    fn draw(&self,ctx:&mut Context,_res: &Resources){
         graphics::draw(ctx,&self.icon,
-            graphics::DrawParam::default().dest(self.position));
+            graphics::DrawParam::default().dest(self.position)
+        ).expect("action button draw failed");
     }
 }
 
@@ -378,8 +380,8 @@ impl EventHandler for Window {
         println!("click on x{} y{}",x,y);
         for widget in &mut self.widgets{
             match widget.click(x, y){
-                Some(x) => self.tx.send(x),
-                _ => {Ok(())},
+                Some(x) => self.tx.send(x).expect("failed sending to emulator"),
+                _ => {},
             };
         }
     }

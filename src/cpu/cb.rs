@@ -12,15 +12,15 @@ pub fn instr_cb(ram: &mut Ram,
         let op_bit = (op&0x38)>>3;
         let bit_mask = 1<<op_bit;
         let mut val =
-        match(op_reg){
-            0 => reg.B,
-            1 => reg.C,
-            2 => reg.D,
-            3 => reg.E,
-            4 => reg.H,
-            5 => reg.L,
-            6 => ram.read8(reg.L,reg.H),
-            7 => reg.A,
+        match op_reg{
+            0 => reg.b,
+            1 => reg.c,
+            2 => reg.d,
+            3 => reg.e,
+            4 => reg.h,
+            5 => reg.l,
+            6 => ram.read8(reg.l,reg.h),
+            7 => reg.a,
             _ => panic!("impossible")
         };
         match op_op{
@@ -29,41 +29,41 @@ pub fn instr_cb(ram: &mut Ram,
                 match op_bit{
                 // RLC
                 0 => {
-                    alu.Fcarry = val&0x80 != 0;
+                    alu.flag_carry = val&0x80 != 0;
                     val = val.rotate_left(1);
                 },
                 // RRC
                 1 => {
-                    alu.Fcarry = val&1 !=0;
+                    alu.flag_carry = val&1 !=0;
                     val = val.rotate_right(1);
                 },
                 // RL
                 2 => {
                     let c = val&0x80 != 0;
                     val = val.wrapping_shl(1);
-                    if alu.Fcarry {
+                    if alu.flag_carry {
                         val |= 1;
                     }
-                    alu.Fcarry = c;
+                    alu.flag_carry = c;
                 },
                 // RR
                 3 => {
                     let c = val&1 != 0;
                     val = val.wrapping_shr(1);
-                    if alu.Fcarry {
+                    if alu.flag_carry {
                         val |= 0x80;
                     }
-                    alu.Fcarry = c;
+                    alu.flag_carry = c;
                 },
                 // SLA
                 4 => {
-                    alu.Fcarry = val&0x80 != 0;
+                    alu.flag_carry = val&0x80 != 0;
                     val = val.wrapping_shl(1);
                 },
                 // SRA
                 5 => {
                     let c = val&0x80 != 0;
-                    alu.Fcarry = val&1 != 0;
+                    alu.flag_carry = val&1 != 0;
                     val = val.wrapping_shr(1);
                     if c {
                         val |= 0x80;
@@ -74,24 +74,24 @@ pub fn instr_cb(ram: &mut Ram,
                     let h = (val&0xf0)>>4;
                     let l = (val&0xf)<<4;
                     val = h+l;
-                    alu.Fcarry = false;
+                    alu.flag_carry = false;
                 },
                 // SRL
                 7 => {
-                    alu.Fcarry = val&1 != 0;
+                    alu.flag_carry = val&1 != 0;
                     val = val.wrapping_shr(1);
                 },
                 _ => panic!("impossible")
                 }
-                alu.Fzero = val == 0;
-                alu.Fsub  = false;
-                alu.Fhalf = false;
+                alu.flag_zero = val == 0;
+                alu.flag_substract  = false;
+                alu.flag_halfcarry = false;
             },
             // BIT
             1 => {
-                alu.Fsub = false;
-                alu.Fhalf = true;
-                alu.Fzero = val&bit_mask == 0;
+                alu.flag_substract = false;
+                alu.flag_halfcarry = true;
+                alu.flag_zero = val&bit_mask == 0;
             },
             // RES
             2 => {val = val & !bit_mask;},
@@ -100,17 +100,17 @@ pub fn instr_cb(ram: &mut Ram,
             _ => panic!("impossible")
         };
         match op_reg {
-            0 => {reg.B = val; CpuState::Wait(1)},
-            1 => {reg.C = val; CpuState::Wait(1)},
-            2 => {reg.D = val; CpuState::Wait(1)},
-            3 => {reg.E = val; CpuState::Wait(1)},
-            4 => {reg.H = val; CpuState::Wait(1)},
-            5 => {reg.L = val; CpuState::Wait(1)},
+            0 => {reg.b = val; CpuState::Wait(1)},
+            1 => {reg.c = val; CpuState::Wait(1)},
+            2 => {reg.d = val; CpuState::Wait(1)},
+            3 => {reg.e = val; CpuState::Wait(1)},
+            4 => {reg.h = val; CpuState::Wait(1)},
+            5 => {reg.l = val; CpuState::Wait(1)},
             6 => {
-                ram.write8(reg.L,reg.H,val);
+                ram.write8(reg.l,reg.h,val);
                 CpuState::Wait(3)
             },
-            7 => {reg.A = val; CpuState::Wait(1)},
+            7 => {reg.a = val; CpuState::Wait(1)},
             _ => panic!("impossible")
         }
     }

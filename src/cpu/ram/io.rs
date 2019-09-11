@@ -124,32 +124,32 @@ impl InterruptManager{
 //                println!("running Vblank PC{:x} SP{:x}",reg.PC,reg.SP);
                 ram.interrupt.master_enable = false;
                 ram.interrupt.request_vblank = false;
-                ram.push16(&mut reg.SP,reg.PC);
-                reg.PC = 0x40;
+                ram.push16(&mut reg.sp,reg.pc);
+                reg.pc = 0x40;
             }else if ram.interrupt.enable_lcd_stat && ram.interrupt.request_lcd_stat{
 //                println!("running lcd_stat" );
                 ram.interrupt.master_enable = false;
                 ram.interrupt.request_lcd_stat = false;
-                ram.push16(&mut reg.SP,reg.PC);
-                reg.PC = 0x48;
+                ram.push16(&mut reg.sp,reg.pc);
+                reg.pc = 0x48;
             }else if ram.interrupt.enable_timer && ram.interrupt.request_timer{
 //                println!("running timer" );
                 ram.interrupt.master_enable = false;
                 ram.interrupt.request_timer = false;
-                ram.push16(&mut reg.SP,reg.PC);
-                reg.PC = 0x50;
+                ram.push16(&mut reg.sp,reg.pc);
+                reg.pc = 0x50;
             }else if ram.interrupt.enable_serial && ram.interrupt.request_serial{
 //                println!("running serial" );
                 ram.interrupt.master_enable = false;
                 ram.interrupt.request_serial = false;
-                ram.push16(&mut reg.SP,reg.PC);
-                reg.PC = 0x58;
+                ram.push16(&mut reg.sp,reg.pc);
+                reg.pc = 0x58;
             }else if ram.interrupt.enable_joypad && ram.interrupt.request_joypad{
 //                println!("running joypad" );
                 ram.interrupt.master_enable = false;
                 ram.interrupt.request_joypad = false;
-                ram.push16(&mut reg.SP,reg.PC);
-                reg.PC = 0x60;
+                ram.push16(&mut reg.sp,reg.pc);
+                reg.pc = 0x60;
             }
         }
     }

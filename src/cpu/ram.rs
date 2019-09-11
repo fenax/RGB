@@ -309,10 +309,6 @@ impl Ram{
         self.write(a,v.0);
         self.write(a+1,v.1);
     }
-    pub fn read88(&mut self,l:u8,h:u8) -> (u8,u8){
-        let a = u8tou16(l,h);
-        (self.read(a),self.read(a+1))
-    }
     pub fn push88(&mut self,sp:&mut u16,l:u8,h:u8){
         *sp -= 2;
         self.write(*sp,   l);
