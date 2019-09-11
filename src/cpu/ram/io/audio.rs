@@ -3,7 +3,7 @@ use cpu::*;
 use cpu::ram::Ram;
 
 
-const Audio_Debug :bool = false;
+const Audio_Debug :bool = true;
 
 /*
      NRx0 NRx1 NRx2 NRx3 NRx4
@@ -20,12 +20,13 @@ $FF27-$FF2F always read back as $FF
 
 pub struct Noise{
     length:u8,
+    set_length:u8,
     envelope_volume : u8,
     envelope_add_mode: bool,
     envelope_period : u8,
 
     volume:u8,
-    period:u8,
+    envelope_timer:u8,
 
     clock_shift: u8,
     width_mode : bool,
@@ -48,13 +49,14 @@ pub struct Noise{
 impl Noise{
     pub fn origin()->Noise{
         Noise{
-            length:63,
+            length:0,
+            set_length:64,         
             envelope_volume : 15,
             envelope_add_mode : false,
             envelope_period:3,
 
             volume:0,
-            period:0,
+            envelope_timer:3,
 
             clock_shift:0,
             width_mode:false,
@@ -76,43 +78,44 @@ impl Noise{
         self.write_frequency_hi(0);
         self.write_shift_reg(0);
         self.write_lp(0);
-        self.period = 0;
+        //self.period = 0;
         self.enable = false;
     }
+        
     pub fn lenght_decr(&mut self){
-        if self.enable{
+        if self.enable && self.length_enable{
             if self.length == 0 {
                 self.enable = false;
-            }
-            if self.length_enable{
+            }else{
+                let old = self.length;
                 self.length = self.length.saturating_sub(1);
+                println!("Length decrease {} to {} ",old,self.length);
+            }
+        }   
+    }
+
+    pub fn step_envelope(&mut self){
+        if self.enable == false || self.envelope_period == 0 {return;}
+        self.envelope_timer -= 1;
+        if self.envelope_timer == 0{
+            self.envelope_timer = self.envelope_period;
+            let t = if self.envelope_add_mode{
+                self.volume.wrapping_add(1)
+            }else{
+                self.volume.wrapping_sub(1)
+            };
+            if t>=0 && t<=15{
+                self.volume = t;
+                if t == 0 {self.enable = false;}
             }
         }
-
-    }
-    pub fn step_envelope(&mut self){
-        if self.enable == false || self.period == 0 {return;}
-        self.period -= 1;
-                if self.period == 0{
-            self.volume = 0;
-            self.enable = false;
-        }
-
-        let t = if self.envelope_add_mode{
-            self.volume.wrapping_add(1)
-        }else{
-            self.volume.wrapping_sub(1)
-        };
-        if t>=0 && t<=15{
-            self.volume = t;
-        }
-        /*if t== 0 {
+       /* if t== 0 {
             self.enable = false
             };*/
     }
 
     pub fn change_after(&self)->u32{
-        match self.divisor_code{
+        (match self.divisor_code{
             0 => 1,
             1 => 2,
             2 => 4,
@@ -121,39 +124,45 @@ impl Noise{
             5 => 10,
             6 => 12,
             7 => 14,
-            _ => panic!(),
+            _ => panic!("impossible"),
+        }) << self.clock_shift
+    }
+
+    pub fn step_shift_register(&mut self){
+        let out;
+        let tap;
+        if self.width_mode{
+            //7 bits
+            out = (self.shift_reg & (1 << 7)) != 0;
+            tap = (self.shift_reg & (1 << 6)) != 0;
+        }else{
+            //15 bits
+            out = (self.shift_reg & (1 << 15)) != 0;
+            tap = (self.shift_reg & (1 << 14)) != 0;
+        }
+        self.shift_reg <<= 1;
+        self.high = !out;
+        if tap^out{
+            self.shift_reg |= 1;
         }
     }
 
     pub fn step(&mut self, clock:u32){
         if self.must_trigger{
+            self.shift_reg = 0xff;
             self.next_shift = clock + self.change_after();
 
             self.enable = true;
             self.volume = self.envelope_volume;
-            self.period = self.envelope_period;
+            self.envelope_timer = self.envelope_period;
             //self.change(clock);
-            if self.length == 0 {
-                self.length = 63;
-            }
+            self.length = 64-self.set_length;
             self.must_trigger = false;
         }
         if self.enable{
             if 0 >= self.change_countdown{
                 self.change_countdown =  self.change_after();
-                let last_bit = self.shift_reg&1;
-                self.high =  last_bit ==0;
-                self.sample_count +=1;
-                self.sample_total += if self.high {0.5}else{-0.5};
-                let bit = ((self.shift_reg>>1)&1) ^ (self.shift_reg&1);
-                self.shift_reg = self.shift_reg>>1;
-                if self.width_mode{
-                    self.shift_reg = self.shift_reg & 0x3f;
-                    self.shift_reg |= bit<<6;
-                }else{
-                    self.shift_reg = self.shift_reg & ((1<<14)-1);
-                    self.shift_reg |= bit<<14;
-                }
+                self.step_shift_register();
             }else{
                 self.sample_count += 1;
                 self.sample_total += if self.high {0.5}else{-0.5};
@@ -199,9 +208,9 @@ impl Noise{
 
 
     pub fn write_lp(&mut self, v:u8){
-        self.length = 63 - (v&0x3f);
+        self.set_length = (v&0x3f);
         if Audio_Debug{
-            println!("write length {}",self.length);
+            println!("write length {}",self.set_length);
         }
     }
     pub fn read_lp(&self)->u8{
@@ -279,7 +288,8 @@ const wave_clock_factor :u32 =  2;
 pub struct Wave{
     frequency:u16,
     volume:f64,
-    length:u8,
+    length:u16,
+    set_length:u8,
     power:bool,
     must_trigger:bool,
     length_enable:bool,
@@ -293,12 +303,14 @@ pub struct Wave{
     save_volume:u8,
 }
 
+
 impl Wave{
     pub fn origin()->Wave{
         Wave{
             frequency:0,
             volume:0.0,
             length:255,
+            set_length:0,
             power:false,
             must_trigger:false,
             length_enable:false,
@@ -330,18 +342,17 @@ impl Wave{
     pub fn step_frequency(&self)->u32{
         (2048 - self.frequency)as u32
     }
+        
     pub fn lenght_decr(&mut self){
-        if self.enable{
-            if self.length_enable{
-                if self.length == 0 {
-                    self.enable = false;
-                }
+        if self.enable && self.length_enable{
+            if self.length == 0 {
+                self.enable = false;
+            }else{
+                let old = self.length;
                 self.length = self.length.saturating_sub(1);
-                
-                println!("Wave Length decrease {} ",self.length);
-
+                println!("Length decrease {} to {} ",old,self.length);
             }
-        }
+        }   
     }
 
     pub fn change(&mut self)->f32{
@@ -393,9 +404,8 @@ impl Wave{
             self.enable = true;
             self.next_change = clock*wave_clock_factor+self.step_frequency();
             //self.change(clock);
-            if self.length == 0 {
-                self.length = 64;
-            }
+            self.length = 256 - self.set_length as u16;
+            
             self.must_trigger = false;
         }
     }
@@ -425,9 +435,9 @@ impl Wave{
         if self.power {0xff}else{0x7f}
     }
     pub fn write_lp(&mut self, v:u8){
-        self.length = 255 - v;
+        self.set_length = v;
         if Audio_Debug{
-            println!("write length {} ",self.length);
+            println!("write length {} ",self.set_length);
         }
     }
     pub fn read_lp(&self)->u8{
@@ -504,6 +514,7 @@ pub struct Square{
     envelope_volume : u8,
     envelope_add_mode: bool,
     envelope_period : u8,
+    envelope_timer:u8,
     period:u8,
     trigger : bool,
     must_trigger : bool,
@@ -516,7 +527,7 @@ pub struct Square{
     sweep_negate : bool,
     sweep_shift  : u8,
     //sweep_enable :bool,
-    sweep_timer  : u16,
+    sweep_timer  : u8,
     enable: bool,
     high:bool,
 }
@@ -535,14 +546,15 @@ impl Square{
             envelope_volume : 15,
             envelope_add_mode : false,
             envelope_period:3,
+            envelope_timer:3,
             period:0,
             trigger : false,
             must_trigger: false,
             high :false,
             length_enable :false,
             duty:2,
-            set_length:63,
-            length:63,
+            set_length:0,
+            length:64,
             sweep_period:0,
             sweep_negate:true,
             sweep_shift:0,
@@ -569,43 +581,46 @@ impl Square{
     }
 
     pub fn lenght_decr(&mut self){
-        if self.enable{
+        if self.enable && self.length_enable{
             if self.length == 0 {
                 self.enable = false;
-            }else
-            if self.length_enable{
+            }else{
                 let old = self.length;
                 self.length = self.length.saturating_sub(1);
                 println!("Length decrease {} to {} ",old,self.length);
             }
-        }
-
+        }   
     }
 
     pub fn step_envelope(&mut self){
-        if self.enable == false || self.period == 0 {return;}
-        self.period -= 1;
-        if self.period == 0{
-            self.volume = 0;
-            self.enable = false;
-        }
-        let t = if self.envelope_add_mode{
-            self.volume.wrapping_add(1)
-        }else{
-            self.volume.wrapping_sub(1)
-        };
-        if t>=0 && t<=15{
-            self.volume = t;
+        if self.enable == false || self.envelope_period == 0 {return;}
+        self.envelope_timer -= 1;
+        if self.envelope_timer == 0{
+            self.envelope_timer = self.envelope_period;
+            let t = if self.envelope_add_mode{
+                self.volume.wrapping_add(1)
+            }else{
+                self.volume.wrapping_sub(1)
+            };
+            if t>=0 && t<=15{
+                self.volume = t;
+                if t == 0 {self.enable = false;}
+            }
         }
        /* if t== 0 {
             self.enable = false
             };*/
     }
+
     pub fn step_sweep(&mut self){
-        if  self.sweep_timer>0 && self.sweep_shift >0{
+        if self.enable && self.sweep_shift > 0 && self.sweep_period>0{
             self.sweep_timer -= 1;
-            self.frequency = self.shadow_frequency;
-            self.calculate_sweep();
+            if self.sweep_timer == 0{
+                self.sweep_timer = self.sweep_period;
+                self.calculate_sweep();
+                println!("SWEEP from {} to {}",self.frequency,self.shadow_frequency);
+                self.frequency = self.shadow_frequency;
+            }
         }
     }
     pub fn calculate_sweep(&mut self){
@@ -615,7 +630,6 @@ impl Square{
         }else{
             self.shadow_frequency.wrapping_add(t)
         };
-        println!("shadow {} new sweeped frequency {}",self.shadow_frequency,t);
         if t<0 || t>2047 {
             self.enable = false;
         }else{
@@ -634,7 +648,7 @@ impl Square{
         if self.must_trigger{
             self.last_rise = clock;
             self.shadow_frequency = self.frequency;
-            self.sweep_timer = self.sweep_period as u16;
+            self.sweep_timer = self.sweep_period;
             //self.sweep_enable = self.sweep_period != 0 || self.sweep_shift != 0;
             self.enable = true;
             //self.next_change = clock*8 + self.toggle_after(false,clock);
@@ -642,13 +656,9 @@ impl Square{
             self.high = false;
             self.change();
             self.volume = self.envelope_volume;
-            self.period = self.envelope_period;
+            self.envelope_timer = self.envelope_period;
             //self.change(clock);
-            if self.set_length == 0 {
-                self.length = 63;
-            }else{
-                self.length = self.set_length;
-            }
+            self.length = 64 - self.set_length;
             if  self.sweep_timer>0 && self.sweep_shift >0{
                 self.calculate_sweep();
             }
@@ -734,7 +744,7 @@ impl Square{
         }
         if Audio_Debug{
             println!("write length {} duty {}",
-                    self.length,self.duty);
+                    self.set_length,self.duty);
         }
     }
     pub fn read_lp(&self)->u8{
@@ -1004,8 +1014,8 @@ impl Audio{
         self.square2.step(clock);
         self.wave3.step(clock);
         self.noise4.step(clock);
-        if clock%0x1fff == 0 {
-            match clock%0xffff >> (4+4+4+1){
+        if clock%0x3ff == 0 {
+            match clock%0x1fff >> (4+4+2){
                 0 => {self.length_decr();},
                 1 => {},
                 2 => {self.length_decr();              self.sweep();},
@@ -1019,16 +1029,7 @@ impl Audio{
             
                //runs at 512 hz 
         }
-        if clock%0x3fff == 0 {
-               //runs at 256 hz
-        }
-        if clock%0x7fff == 0 {
-               //runs at 128 hz
-            self.square1.step_sweep();
-        }
-        if clock%0xffff == 0 {
-               //run at 64 hz    
-        }
+
 
         if clock >= self.next_sample{
             self.next_samplef = self.next_samplef + self.sample_len;

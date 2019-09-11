@@ -202,7 +202,7 @@ impl Gameboy{
                             },
                             _=>{},
                         };
-                        file.write_all(&buffer);
+//                        file.write_all(&buffer);
 //                        apush.push(std::time::Instant::now());
                         thread::yield_now();
                         buffer_index = 0;
