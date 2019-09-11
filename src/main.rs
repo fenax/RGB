@@ -56,6 +56,55 @@ pub enum ToEmu {
     KeyUp(EmuKeys),
 }
 
+pub struct ToDisplay{
+    pub back_buffer:[u8; 160 * 144],
+    pub hram:Vec<u8>,
+    pub window0:Option<Vec<u8>>,
+    pub window1:Option<Vec<u8>>,
+    pub tileset:Option<Vec<u8>>,
+    pub tile_select:bool,
+}
+
+impl ToDisplay{
+    pub fn collect(ram: &mut ram::Ram) ->ToDisplay{
+        let set = if ram.video.updated_tiles {
+            ram.video.updated_tiles = false;
+            let mut set = Vec::new();
+            set.extend_from_slice(&ram.video.vram[0..=0x17ff]);
+            Some(set)
+        } else {
+            None
+        };
+        let w0 = if ram.video.updated_map_1 {
+            ram.video.updated_map_1 = false;
+            let mut w0 = Vec::new();
+            w0.extend_from_slice(&ram.video.vram[0x1800..=0x1bff]);
+            Some(w0)
+        } else {
+            None
+        };
+        let w1 = if ram.video.updated_map_2 {
+            ram.video.updated_map_2 = false;
+            let mut w1 = Vec::new();
+            w1.extend_from_slice(&ram.video.vram[0x1c00..=0x1fff]);
+            Some(w1)
+        } else {
+            None
+        };
+        let mut m = Vec::new();
+        m.extend_from_slice(&ram.hram);
+
+        ToDisplay{
+            back_buffer:ram.video.back_buffer,
+            hram:m,
+            window0:w0,
+            window1:w1,
+            tileset:set,
+            tile_select:ram.video.tile_set
+        }
+    }
+}
+
 struct Gameboy {
     ram: cpu::ram::Ram,
     reg: cpu::registers::Registers,
@@ -100,13 +149,7 @@ impl Gameboy {
     fn main_loop(
         &mut self,
         mut rx: mpsc::Receiver<ToEmu>,
-        mut tx: mpsc::Sender<(
-            [u8; 160 * 144],
-            Vec<u8>,
-            Option<Vec<u8>>,
-            Option<Vec<u8>>,
-            Option<Vec<u8>>,
-        )>,
+        mut tx: mpsc::Sender<ToDisplay>,
         mut s: Simple,
     ) {
         let mut clock = 0 as u32;
@@ -188,30 +231,7 @@ impl Gameboy {
             match i_video {
                 cpu::ram::io::Interrupt::VBlank => {
                     //println!("got VBLANK");
-                    let set = if self.ram.video.updated_tiles {
-                        let mut set = Vec::new();
-                        set.extend_from_slice(&self.ram.video.vram[0..=0x17ff]);
-                        Some(set)
-                    } else {
-                        None
-                    };
-                    let w0 = if self.ram.video.updated_map_1 {
-                        let mut w0 = Vec::new();
-                        w0.extend_from_slice(&self.ram.video.vram[0x1800..=0x1bff]);
-                        Some(w0)
-                    } else {
-                        None
-                    };
-                    let w1 = if self.ram.video.updated_map_2 {
-                        let mut w1 = Vec::new();
-                        w1.extend_from_slice(&self.ram.video.vram[0x1c00..=0x1fff]);
-                        Some(w1)
-                    } else {
-                        None
-                    };
-                    let mut m = Vec::new();
-                    m.extend_from_slice(&self.ram.hram);
-                    tx.send((self.ram.video.back_buffer, m, w0, w1, set))
+                    tx.send(ToDisplay::collect(&mut self.ram))
                         .unwrap();
                     self.ram.video.clear_update();
                 }

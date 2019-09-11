@@ -8,6 +8,7 @@ use std::sync::mpsc;
 use EmuCommand;
 use EmuKeys;
 use ToEmu;
+use ToDisplay;
 
 trait Widget {
     fn click(&mut self, x: f32, y: f32) -> Option<ToEmu>;
@@ -53,13 +54,7 @@ impl Resources {
 }
 
 pub struct Window {
-    rx: mpsc::Receiver<(
-        [u8; 160 * 144],
-        Vec<u8>,
-        Option<Vec<u8>>,
-        Option<Vec<u8>>,
-        Option<Vec<u8>>,
-    )>,
+    rx: mpsc::Receiver<ToDisplay>,
     resources: Resources,
 
     tx: mpsc::Sender<ToEmu>,
@@ -138,13 +133,7 @@ impl Widget for ActionButton {
 impl Window {
     pub fn new(
         _ctx: &mut Context,
-        rx: mpsc::Receiver<(
-            [u8; 160 * 144],
-            Vec<u8>,
-            Option<Vec<u8>>,
-            Option<Vec<u8>>,
-            Option<Vec<u8>>,
-        )>,
+        rx: mpsc::Receiver<ToDisplay>,
         tx: mpsc::Sender<ToEmu>,
     ) -> Window {
         let res = Resources::new(_ctx);
@@ -208,16 +197,16 @@ impl EventHandler for Window {
     fn update(&mut self, _ctx: &mut Context) -> GameResult<()> {
         loop {
             match self.rx.recv_timeout(std::time::Duration::new(0, 1000000)) {
-                Ok((x, m, w0, w1, s)) => {
-                    let updated_w0 = w0.is_some();
-                    let updated_w1 = w1.is_some();
-                    let updated_s = s.is_some();
+                Ok(msg) => {
+                    let updated_w0 = msg.window0.is_some();
+                    let updated_w1 = msg.window1.is_some();
+                    let updated_s = msg.tileset.is_some();
                     let mut ar: [u8; 160 * 144 * 4] = [128; 160 * 144 * 4];
 
                     let mut h: std::string::String = "".to_string();
                     let mut sep = "";
-                    for i in 0..m.len() {
-                        h = format!("{}{}{:02x}", &h, &sep, m[i]);
+                    for i in 0..msg.hram.len() {
+                        h = format!("{}{}{:02x}", &h, &sep, msg.hram[i]);
                         if (i + 1) % 4 == 0 {
                             sep = "\n";
                         } else {
@@ -226,14 +215,14 @@ impl EventHandler for Window {
                     }
                     self.hram = graphics::Text::new((h, self.resources.font, 12.0));
 
-                    for i in 0..x.len() {
-                        ar[i * 4] = x[i];
-                        ar[i * 4 + 1] = x[i];
-                        ar[i * 4 + 2] = x[i];
+                    for i in 0..msg.back_buffer.len() {
+                        ar[i * 4] = msg.back_buffer[i];
+                        ar[i * 4 + 1] = msg.back_buffer[i];
+                        ar[i * 4 + 2] = msg.back_buffer[i];
                         ar[i * 4 + 3] = 255;
                     }
                     self.buffer = graphics::Image::from_rgba8(_ctx, 160, 144, &ar).unwrap();
-                    match s {
+                    match msg.tileset {
                         Some(new_tile) => {
                             self.src_tile = new_tile;
                             let mut out_tile: [u8; 128 * 192 * 4] = [128; 128 * 192 * 4];
@@ -270,13 +259,13 @@ impl EventHandler for Window {
                         }
                         None => {}
                     }
-                    match w0 {
+                    match msg.window0 {
                         Some(new_w0) => {
                             self.src_w0 = new_w0;
                         }
                         None => {}
                     }
-                    match w1 {
+                    match msg.window1 {
                         Some(new_w1) => {
                             self.src_w1 = new_w1;
                         }
@@ -287,6 +276,7 @@ impl EventHandler for Window {
                         for x in 0..32 {
                             for y in 0..32 {
                                 let tile = self.src_w0[x + y * 32] as usize;
+                                let tile = if !msg.tile_select&&tile<=127{tile+256}else{tile};
                                 for tile_y in 0..8 {
                                     let l = self.src_tile[tile * 16 + tile_y * 2];
                                     let h = self.src_tile[tile * 16 + tile_y * 2 + 1];
@@ -318,6 +308,7 @@ impl EventHandler for Window {
                         for x in 0..32 {
                             for y in 0..32 {
                                 let tile = self.src_w1[x + y * 32] as usize;
+                                let tile = if !msg.tile_select&&tile<=127{tile+256}else{tile};
                                 for tile_y in 0..8 {
                                     let l = self.src_tile[tile * 16 + tile_y * 2];
                                     let h = self.src_tile[tile * 16 + tile_y * 2 + 1];
