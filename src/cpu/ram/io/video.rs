@@ -1,7 +1,7 @@
 use cpu::ram::io::*;
 use cpu::ram::Ram;
 use std::cmp::Ordering;
-
+const VIDEO_DEBUG:bool = false;
 #[derive(Copy, Clone, Eq)]
 pub struct Sprite {
     pub y: u8,
@@ -449,7 +449,9 @@ impl Video {
         Interrupt::None
     }
     pub fn write_control(&mut self, v: u8) {
-        println!("write lcd control {:02x}", v);
+        if VIDEO_DEBUG{
+            println!("write lcd control {:02x}", v);
+        }
         //let v = bit_split(v);
         self.enable_lcd = bit(v, 7);
         self.window_tile_map = bit(v, 6);
@@ -479,7 +481,9 @@ impl Video {
     }
 
     pub fn write_status(&mut self, v: u8) {
-        println!("writing status {:x}", v);
+        if VIDEO_DEBUG{
+            println!("writing status {:x}", v);
+        }
         let v = bit_split(v);
         self.enable_ly_lcy_check = v[6];
         self.enable_mode_2_oam_check = v[5];
@@ -489,7 +493,9 @@ impl Video {
     }
 
     pub fn read_status(&self) -> u8 {
-        println!("read status {} {}", self.line, self.line_clock);
+        if VIDEO_DEBUG{
+            println!("read status {} {}", self.line, self.line_clock);
+        }
         bit_merge(
             false,
             false,
@@ -553,7 +559,9 @@ impl Video {
         self.line_compare
     }
     pub fn write_line_compare(&mut self, v: u8) {
-        println!("write line compare {}", v);
+        if VIDEO_DEBUG{
+            println!("write line compare {}", v);
+        }
         self.line_compare = v;
     }
 
