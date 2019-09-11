@@ -121,7 +121,7 @@ impl Gameboy {
             clock = clock.wrapping_add(1);
             if !halted {
                 if cpu_wait == 0 {
-                    //                    print!("\n{}{}",self.alu,self.reg);
+                    //print!("\n{}{}",self.alu,self.reg);
 
                     match instruct(&mut self.ram, &mut self.reg, &mut self.alu) {
                         CpuState::None => {}
@@ -167,7 +167,6 @@ impl Gameboy {
                         .as_mut()
                         .write_f32::<LittleEndian>(r as f32)
                         .expect("failed to convert sound sample shape");
-                    //TODO stereo
                     buffer_index += 1;
                     if buffer_index * 2 * size >= buffer.len() {
                         match s.write(&buffer) {
@@ -176,8 +175,8 @@ impl Gameboy {
                             }
                             _ => {}
                         };
-                        //                        file.write_all(&buffer);
-                        //                        apush.push(std::time::Instant::now());
+                        //file.write_all(&buffer);
+                        //apush.push(std::time::Instant::now());
                         thread::yield_now();
                         buffer_index = 0;
                     } else if buffer_index * 8 == buffer.len() {
@@ -250,7 +249,7 @@ fn main() -> io::Result<()> {
         "bleep",                // Description of our stream
         &spec,                  // Our sample format
         None,                   // Use default channel map
-        //Some(&b_attr)                 // Use default buffering attributes
+        //Some(&b_attr)         // Use default buffering attributes
         None,
     )
     .unwrap();
