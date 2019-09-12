@@ -201,7 +201,7 @@ impl Video {
         let mut window_x;
         if self.window_scroll_x <= 7 {
             screen_x = 0;
-            window_x = self.window_scroll_x as usize;
+            window_x = 7 - self.window_scroll_x as usize;
         } else {
             screen_x = (self.window_scroll_x - 7) as usize;
             window_x = 0;
@@ -383,12 +383,6 @@ impl Video {
     pub fn draw_line(&mut self) {
         let bg = self.draw_bg();
         let sprites = self.draw_sprite_both();
-        /*        if self.sprite_size {
-                      self.draw_sprite_16()
-        }else{
-                      self.draw_sprite_8()
-        };*/
-
         let win = self.draw_window();
 
         for (i, (b, s, w)) in izip!(bg.iter(), sprites.iter(), win.iter()).enumerate() {
@@ -550,7 +544,7 @@ impl Video {
     }
 
     pub fn write_window_scroll_x(&mut self, v: u8) {
-        //        println!("write window scroll x {}",v);
+        println!("write window scroll x {}",v);
         self.window_scroll_x = v;
     }
 
