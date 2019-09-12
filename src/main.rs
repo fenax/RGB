@@ -3,6 +3,8 @@ extern crate ggez;
 extern crate libpulse_binding as pulse;
 extern crate libpulse_simple_binding as psimple;
 #[macro_use]
+extern crate derivative;
+#[macro_use]
 extern crate itertools;
 
 use ggez::event;
@@ -45,6 +47,11 @@ pub enum EmuCommand {
     Audio2(Option<bool>),
     Audio3(Option<bool>),
     Audio4(Option<bool>),
+    PrintAudio1,
+    PrintAudio2,
+    PrintAudio3,
+    PrintAudio4,
+    PrintVideo,
     Save,
 }
 
@@ -132,6 +139,11 @@ impl Gameboy {
             ToEmu::Command(EmuCommand::Audio2(v)) => self.ram.audio.override_sound2 = v,
             ToEmu::Command(EmuCommand::Audio3(v)) => self.ram.audio.override_sound3 = v,
             ToEmu::Command(EmuCommand::Audio4(v)) => self.ram.audio.override_sound4 = v,
+            ToEmu::Command(EmuCommand::PrintAudio1) => println!("#### audio 1\n{:?}",self.ram.audio.square1),
+            ToEmu::Command(EmuCommand::PrintAudio2) => println!("#### audio 2\n{:?}",self.ram.audio.square2),
+            ToEmu::Command(EmuCommand::PrintAudio3) => println!("#### audio 3\n{:?}",self.ram.audio.wave3),
+            ToEmu::Command(EmuCommand::PrintAudio4) => println!("#### audio 4\n{:?}",self.ram.audio.noise4),
+            ToEmu::Command(EmuCommand::PrintVideo) => println!("#### video\n{:?}",self.ram.video),
             ToEmu::Command(EmuCommand::Save) => self.ram.cart.save(),
             _ => println!("{:?}", t),
         }

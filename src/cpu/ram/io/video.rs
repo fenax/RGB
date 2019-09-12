@@ -82,14 +82,20 @@ pub struct WindowPixel {
     color: u8,
 }
 
+#[derive(Derivative)]
+#[derivative(Debug)]
 pub struct Video {
     line_clock: u16,
     line: u8,
     window_line: u8,
+    #[derivative(Debug="ignore")]
     pub vram: [u8; 0x2000],
+    #[derivative(Debug="ignore")]
     tiles: [[u8; 8 * 8]; 0x180],
 
+    #[derivative(Debug="ignore")]
     pub back_buffer: [u8; 144 * 160],
+    #[derivative(Debug="ignore")]
     oam: [Sprite; 40],
 
     pub updated_tiles: bool,

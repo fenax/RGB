@@ -1,6 +1,6 @@
 use cpu::ram::io::*;
 
-const AUDIO_DEBUG: bool = true;
+const AUDIO_DEBUG: bool = false;
 
 /*
      NRx0 NRx1 NRx2 NRx3 NRx4
@@ -13,7 +13,7 @@ NR5x  $00  $00 $70
 
 $FF27-$FF2F always read back as $FF
 */
-
+#[derive(Debug)]
 pub struct Noise {
     length: u8,
     set_length: u8,
@@ -45,7 +45,7 @@ impl Noise {
     pub fn origin() -> Noise {
         Noise {
             length: 0,
-            set_length: 64,
+            set_length: 0,
             envelope_volume: 15,
             envelope_add_mode: false,
             envelope_period: 3,
@@ -84,8 +84,7 @@ impl Noise {
             } else {
                 let old = self.length;
                 self.length = self.length.saturating_sub(1);
-                println!("Length decrease {} to {} ", old, self.length);
-            }
+             }
         }
     }
 
@@ -124,7 +123,7 @@ impl Noise {
             6 => 12,
             7 => 14,
             _ => panic!("impossible"),
-        }) << self.clock_shift
+        }) << (self.clock_shift + 2)
     }
 
     pub fn step_shift_register(&mut self) {
@@ -141,6 +140,7 @@ impl Noise {
         }
         self.shift_reg <<= 1;
         self.high = !out;
+        //println!("{}",self.high as u8);
         if tap ^ out {
             self.shift_reg |= 1;
         }
@@ -174,9 +174,20 @@ impl Noise {
     }
 
     pub fn step_sample(&mut self) -> f32 {
-        let ret = self.sample_total as f32 / self.sample_count as f32;
-        self.sample_total = 0.0;
-        self.sample_count = 0;
+        let ret =
+        if self.sample_count == 0 {
+            if self.enable{
+                if self.high{0.5}else{-0.5}
+            }else{
+                0.0
+            }
+        }else{
+            let ret = 
+            self.sample_total as f32 / self.sample_count as f32;
+            self.sample_total = 0.0;
+            self.sample_count = 0;
+            ret
+        };
         ret * self.volume as f32 / 16.0
         /*
         if self.enable{
@@ -271,6 +282,7 @@ impl Noise {
 }
 
 const WAVE_CLOCK_FACTOR: u32 = 2;
+#[derive(Debug)]
 pub struct Wave {
     frequency: u16,
     volume: f64,
@@ -334,8 +346,7 @@ impl Wave {
             } else {
                 let old = self.length;
                 self.length = self.length.saturating_sub(1);
-                println!("Length decrease {} to {} ", old, self.length);
-            }
+             }
         }
     }
 
@@ -363,6 +374,7 @@ impl Wave {
     }
 
     pub fn step_sample(&mut self) -> f32 {
+        if self.sample_count == 0 {return 0.0}
         let ret = self.sample_total / self.sample_count as f32;
         self.sample_total = 0.0;
         self.sample_count = 0;
@@ -494,6 +506,7 @@ impl Wave {
 
 const SQUARE_MULTIPLIER: u32 = 1;
 
+#[derive(Debug)]
 pub struct Square {
     //Frequency = 4194304/(32*(2048-x)) Hz
     frequency: u16,
@@ -576,8 +589,7 @@ impl Square {
             } else {
                 let old = self.length;
                 self.length = self.length.saturating_sub(1);
-                println!("Length decrease {} to {} ", old, self.length);
-            }
+             }
         }
     }
 
@@ -611,10 +623,10 @@ impl Square {
             if self.sweep_timer == 0 {
                 self.sweep_timer = self.sweep_period;
                 self.calculate_sweep();
-                println!(
+                /*println!(
                     "SWEEP from {} to {}",
                     self.frequency, self.shadow_frequency
-                );
+                );*/
                 self.frequency = self.shadow_frequency;
             }
         }
@@ -998,14 +1010,16 @@ impl Audio {
         }
     }
     pub fn read_power_flag(&self) -> u8 {
-        println!(
-            "read power flag {} {} {} {} {}",
-            self.square1.enable,
-            self.square2.enable,
-            self.wave3.enable,
-            self.noise4.enable,
-            self.power
-        );
+        if AUDIO_DEBUG {
+            println!(
+                "read power flag {} {} {} {} {}",
+                self.square1.enable,
+                self.square2.enable,
+                self.wave3.enable,
+                self.noise4.enable,
+                self.power
+            ); 
+        }
         bit_merge(
             self.square1.enable,
             self.square2.enable,
@@ -1039,6 +1053,7 @@ impl Audio {
         self.wave3.step(clock);
         self.noise4.step(clock);
         if clock % 0x3ff == 0 {
+            //runs at 512 hz
             match clock % 0x1fff >> (4 + 4 + 2) {
                 0 => {
                     self.length_decr();
@@ -1062,8 +1077,6 @@ impl Audio {
                 }
                 _ => {}
             }
-
-            //runs at 512 hz
         }
 
         if clock >= self.next_sample {
@@ -1106,7 +1119,7 @@ impl Audio {
                 }
                 (((o * self.volume_right as f32) / 16.0) as f32)
             };
-            //          println!("AUDIO SAMPLES {} {} {} {}",sample1,sample2,sample3,sample4);
+            //println!("AUDIO SAMPLES {} {} {} {}",sample1,sample2,sample3,sample4);
             return Interrupt::AudioSample(out_left, out_right);
         }
         Interrupt::None

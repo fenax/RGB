@@ -174,6 +174,31 @@ impl Window {
             action: EmuCommand::Save,
             icon: graphics::Image::new(_ctx, "/floppy-icon.png").expect("failed"),
         }));
+        widgets.push(Box::new(ActionButton{
+            position: Point2::new(256.0+16.0,256.0+144.0),
+            action: EmuCommand::PrintAudio1,
+            icon: graphics::Image::new(_ctx, "/audio-debug-1.png").expect("failed"),
+        }));
+        widgets.push(Box::new(ActionButton{
+            position: Point2::new(256.0+16.0,256.0+144.0+16.0),
+            action: EmuCommand::PrintAudio2,
+            icon: graphics::Image::new(_ctx, "/audio-debug-2.png").expect("failed"),
+        }));
+        widgets.push(Box::new(ActionButton{
+            position: Point2::new(256.0+16.0,256.0+144.0+32.0),
+            action: EmuCommand::PrintAudio3,
+            icon: graphics::Image::new(_ctx, "/audio-debug-3.png").expect("failed"),
+        }));
+        widgets.push(Box::new(ActionButton{
+            position: Point2::new(256.0+16.0,256.0+144.0+48.0),
+            action: EmuCommand::PrintAudio4,
+            icon: graphics::Image::new(_ctx, "/audio-debug-4.png").expect("failed"),
+        }));
+        widgets.push(Box::new(ActionButton{
+            position: Point2::new(256.0+16.0,256.0+144.0+64.0),
+            action: EmuCommand::PrintVideo,
+            icon: graphics::Image::new(_ctx, "/video-debug.png").expect("failed"),
+        }));
 
         Window {
             rx,
