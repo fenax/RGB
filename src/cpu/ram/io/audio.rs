@@ -65,7 +65,7 @@ impl Noise {
             sample_total: 0.0,
             sample_count: 0,
             next_shift: 0,
-            shift_reg: 1,
+            shift_reg: 0xff,
         }
     }
     pub fn clear(&mut self) {
@@ -131,12 +131,12 @@ impl Noise {
         let tap;
         if self.width_mode {
             //7 bits
-            out = (self.shift_reg & (1 << 7)) != 0;
-            tap = (self.shift_reg & (1 << 6)) != 0;
+            out = (self.shift_reg & (1 << 6)) != 0;
+            tap = (self.shift_reg & (1 << 5)) != 0;
         } else {
             //15 bits
-            out = (self.shift_reg & (1 << 15)) != 0;
-            tap = (self.shift_reg & (1 << 14)) != 0;
+            out = (self.shift_reg & (1 << 14)) != 0;
+            tap = (self.shift_reg & (1 << 13)) != 0;
         }
         self.shift_reg <<= 1;
         self.high = !out;
@@ -1181,5 +1181,24 @@ mod tests {
                 assert_eq!(a.read_register(i), v);
             }
         }
+    }
+    #[test]
+    fn lfsr(){
+        let mut n = audio::Noise::origin();
+        n.width_mode = true;
+        fn bit(n:&mut audio::Noise,b:bool){
+            n.step_shift_register();
+            println!("{:04x}{}",n.shift_reg,if n.high {"-"}else{"."});
+            assert!(n.high == b);
+        }
+        for _ in 0..7{
+            bit(&mut n,false);
+
+        }
+        for _ in 0..6{
+            bit(&mut n,true);
+        }
+        bit(&mut n,false); 
+        bit(&mut n,true);
     }
 }

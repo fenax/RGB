@@ -26,6 +26,7 @@ mod cpu;
 mod window;
 
 use cpu::*;
+//use std::io::*;
 
 #[derive(Debug)]
 pub enum EmuKeys {
@@ -224,14 +225,8 @@ impl Gameboy {
                         .expect("failed to convert sound sample shape");
                     buffer_index += 1;
                     if buffer_index * 2 * size >= buffer.len() {
-                        match s.write(&buffer) {
-                            Err(x) => {
-                                panic!(x.to_string());
-                            }
-                            _ => {}
-                        };
-                        //file.write_all(&buffer);
-                        //apush.push(std::time::Instant::now());
+                        s.write(&buffer).expect("Failed writing to sound buffer.");
+                        //file.write_all(&buffer).expect("failed writing to file");
                         thread::yield_now();
                         buffer_index = 0;
                     } else if buffer_index * 8 == buffer.len() {
