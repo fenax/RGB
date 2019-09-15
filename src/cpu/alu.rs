@@ -21,8 +21,8 @@ impl fmt::Display for Alu {
     }
 }
 
-impl Alu {
-    pub fn origin() -> Alu {
+impl Default for Alu{
+    fn default() -> Alu{
         Alu {
             flag_zero: false,
             flag_substract: false,
@@ -30,6 +30,9 @@ impl Alu {
             flag_carry: false,
         }
     }
+}
+
+impl Alu {
     pub fn get_f(&self) -> u8 {
         let mut r = 0 as u8;
         if self.flag_zero {

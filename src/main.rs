@@ -124,7 +124,7 @@ impl Gameboy {
         Gameboy {
             ram: cpu::ram::Ram::origin(cart),
             reg: cpu::registers::Registers::origin(),
-            alu: cpu::alu::Alu::origin(),
+            //alu: cpu::alu::Alu::default(),
             got_tick: false,
         }
     }

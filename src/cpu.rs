@@ -3,6 +3,7 @@ pub mod cartridge;
 mod cb;
 pub mod ram;
 pub mod registers;
+pub mod micro_instructions;
 
 use self::alu::*;
 use self::cb::*;
@@ -31,7 +32,7 @@ pub enum CpuState {
 pub fn instruct(ram: &mut Ram, reg: &mut Registers, alu: &mut Alu) -> CpuState {
     fn read_op(ram: &mut Ram, reg: &mut Registers) -> u8 {
         let r = ram.read(reg.pc);
-        //        print!("{:02x} ",r);
+        //print!("{:02x} ",r);
         reg.pc += 1;
         r
     }
