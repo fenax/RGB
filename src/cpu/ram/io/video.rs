@@ -509,8 +509,8 @@ impl Video {
             1
         } else {
             match self.line_clock {
-                1...20 => 2,
-                21...63 => 3,
+                1..=20 => 2,
+                21..=63 => 3,
                 _ => 0,
             }
         }
@@ -602,7 +602,7 @@ impl Video {
     }
     pub fn write_vram(&mut self, a: u16, v: u8) {
         match a {
-            0...0x17ff => {
+            0..=0x17ff => {
                 self.updated_tiles = true;
                 let a = a as usize;
                 if a & 1 == 0 {
@@ -628,8 +628,8 @@ impl Video {
                     }
                 }
             }
-            0x1800...0x1bff => self.updated_map_1 = true,
-            0x1c00...0x1fff => self.updated_map_2 = true,
+            0x1800..=0x1bff => self.updated_map_1 = true,
+            0x1c00..=0x1fff => self.updated_map_2 = true,
             _ => panic!(),
         }
         self.vram[a as usize] = v;
