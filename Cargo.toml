@@ -6,8 +6,12 @@ authors = ["kasil <kasil@loutre.info>"]
 include = ["resources/DejaVuSansMono.ttf","resources/auto.png","resources/no.png","resources/yes.png"]
 
 [dependencies]
-ggez = "0.5"
-nalgebra = "0.18"
+image = "0.23"
+piston = "0.52"
+piston2d-graphics = "0.39"
+pistoncore-glutin_window = "0.68"
+piston2d-opengl_graphics = "0.77"
+
 libpulse-binding = { version = "2.0" }
 libpulse-simple-binding = { version = "2.0" }
 byteorder = "1"

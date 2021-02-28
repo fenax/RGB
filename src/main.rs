@@ -1,5 +1,10 @@
 extern crate byteorder;
-extern crate ggez;
+
+extern crate piston;
+extern crate graphics;
+extern crate glutin_window;
+extern crate opengl_graphics;
+
 extern crate libpulse_binding as pulse;
 extern crate libpulse_simple_binding as psimple;
 #[macro_use]
@@ -7,8 +12,7 @@ extern crate derivative;
 #[macro_use]
 extern crate itertools;
 
-use ggez::event;
-use ggez::{conf, ContextBuilder};
+extern crate image;
 
 use std::thread;
 
@@ -168,10 +172,10 @@ impl Gameboy {
         let mut clock = 0 as u32;
         let mut cpu_wait = 0;
         let mut buffer_index = 0;
-        let mut buffer = [0; 1024 * 2 * mem::size_of::<f64>()];
+        let mut buffer = [0; 512 * mem::size_of::<f64>()];
         let mut file = File::create("out.pcm").ok().unwrap();
         let mut halted = false;
-        s.write(&buffer);
+        //s.write(&buffer);
 
         loop {
             clock = clock.wrapping_add(1);
@@ -237,7 +241,7 @@ impl Gameboy {
             };
             match i_video {
                 cpu::ram::io::Interrupt::VBlank => {
-                    //println!("got VBLANK");
+//                    println!("got VBLANK");
                     tx.send(ToDisplay::collect(&mut self.ram))
                         .unwrap();
                     self.ram.video.clear_update();
@@ -263,10 +267,10 @@ fn main() -> io::Result<()> {
     };
     assert!(spec.is_valid());
     let mut b_attr = libpulse_binding::def::BufferAttr::default();
-    b_attr.maxlength = 2048;
-    b_attr.tlength = 512;
-    b_attr.prebuf = 512;
-    b_attr.minreq = 512;
+    b_attr.maxlength = 512;
+    b_attr.tlength = 256;
+    b_attr.prebuf = 256;
+    b_attr.minreq = 256;
 
     let s = Simple::new(
         None,                   // Use the default server
@@ -280,15 +284,11 @@ fn main() -> io::Result<()> {
         None,
     )
     .unwrap();
-    let (mut ctx, mut event_loop) = ContextBuilder::new("Rust Game Boy Emulator", "Awosomotter")
-        .window_mode(conf::WindowMode::default().dimensions(512.0, 512.0))
-        .build()
-        .expect("aieee, could not create ggez context!");
 
-    let mut window = window::Window::new(&mut ctx, inbox_window, to_emulator);
+
     let cart = cpu::cartridge::Cartridge::new(&args[1]);
     cart.extract_info();
-    let mut gb = Gameboy::origin(cart);
+    let mut gb = Box::new(Gameboy::origin(cart));
     thread::Builder::new()
         .name("emulator".to_string())
         .spawn(move || {
@@ -296,9 +296,6 @@ fn main() -> io::Result<()> {
         })
         .expect("failed to spawn thread");
 
-    match event::run(&mut ctx, &mut event_loop, &mut window) {
-        Ok(_) => println!("Exited cleanly."),
-        Err(e) => println!("Error occured: {}", e),
-    }
+    window::main_loop(inbox_window, to_emulator);
     Ok(())
 }

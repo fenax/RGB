@@ -1,15 +1,311 @@
-extern crate nalgebra;
+use piston::window::WindowSettings;
+use piston::event_loop::*;
+use piston::input::*;
+use glutin_window::GlutinWindow as Window;
+use opengl_graphics::{ GlGraphics, OpenGL };
+use image::ImageBuffer;
 
-use self::nalgebra::Point2;
-use ggez::event::EventHandler;
-use ggez::input::keyboard::{KeyCode, KeyMods};
-use ggez::{graphics, input, Context, GameResult};
+
+
 use std::sync::mpsc;
 use EmuCommand;
 use EmuKeys;
 use ToEmu;
 use ToDisplay;
 
+
+
+pub struct App {
+    rx: mpsc::Receiver<ToDisplay>,
+    tx: mpsc::Sender<ToEmu>,
+    
+    hram:   Option<graphics::Text>,
+    buffer: Option<opengl_graphics::Texture>,
+    img_w0: Option<opengl_graphics::Texture>,
+    img_w1: Option<opengl_graphics::Texture>,
+    img_tileset: Option<opengl_graphics::Texture>,
+
+    src_tile: Option<Vec<u8>>,
+    src_w0: Option<Vec<u8>>,
+    src_w1: Option<Vec<u8>>,
+
+    gl: GlGraphics, // OpenGL drawing backend.
+    rotation: f64   // Rotation for the square.
+}
+
+impl App {
+    fn render(&mut self, args: &RenderArgs) {
+        use graphics::*;
+
+        const GREEN: [f32; 4] = [0.0, 1.0, 0.0, 1.0];
+
+        let rotation = self.rotation;
+        let (x, y) = (args.window_size[0] / 2.0,
+                      args.window_size[1] / 2.0);
+
+        let main_screen = Image::new().rect([256.0,256.0,160.0,144.0]);
+        let window0_screen = Image::new().rect([0.0,0.0,256.0,256.0]);
+        let window1_screen = Image::new().rect([256.0,0.0,256.0,256.0]);
+
+        let tileset_screen = Image::new().rect([0.0,256.0,128.0,192.0]);
+
+        let buff = &self.buffer;
+        let w0 = &self.img_w0;
+        let w1 = &self.img_w1;
+        let tileset = &self.img_tileset;
+        self.gl.draw(args.viewport(), 
+            |c, gl| {
+            // Clear the screen.
+            clear(GREEN, gl);
+
+            if let Some(b) = buff{
+                main_screen.draw(b, &DrawState::default(), c.transform, gl);
+            }
+            if let Some(img) = w0{
+                window0_screen.draw(img, &DrawState::default(), c.transform, gl);
+            }
+            if let Some(img) = w1{
+                window1_screen.draw(img, &DrawState::default(), c.transform, gl);
+            }
+            if let Some(img) = tileset{
+                tileset_screen.draw(img, &DrawState::default(), c.transform, gl);
+            }
+        });
+    }
+
+    fn update(&mut self, args: &UpdateArgs) {
+        match self.rx.try_recv(){
+            Ok(msg) =>{
+                let updated_w0 = msg.window0.is_some();
+                let updated_w1 = msg.window1.is_some();
+                let updated_s = msg.tileset.is_some();
+                let mut ar: [u8; 160 * 144 * 4] = [128; 160 * 144 * 4];
+
+                let mut h: std::string::String = "".to_string();
+                let mut sep = "";
+                for i in 0..msg.hram.len() {
+                    h = format!("{}{}{:02x}", &h, &sep, msg.hram[i]);
+                    if (i + 1) % 4 == 0 {
+                        sep = "\n";
+                    } else {
+                        sep = " ";
+                    }
+                }
+                //self.hram = graphics::Text::new((h, self.resources.font, 12.0));
+
+                for i in 0..msg.back_buffer.len() {
+                    ar[i * 4] = msg.back_buffer[i];
+                    ar[i * 4 + 1] = msg.back_buffer[i];
+                    ar[i * 4 + 2] = msg.back_buffer[i];
+                    ar[i * 4 + 3] = 255;
+                }
+                self.buffer = Some(opengl_graphics::Texture::from_image(&ImageBuffer::from_raw(160, 144, ar.to_vec()).unwrap(), &opengl_graphics::TextureSettings::new()));
+
+                // opengl_graphics::Texture::from_memory_alpha(&ar, 160, 144, &opengl_graphics::TextureSettings::new()).ok();
+                //self.buffer = graphics::Image::from_rgba8(_ctx, 160, 144, &ar).unwrap();
+                match msg.tileset {
+                    Some(new_tile) => {
+                        let mut out_tile: [u8; 128 * 192 * 4] = [128; 128 * 192 * 4];
+                        for x in 0..16 {
+                            for y in 0..24 {
+                                let tile = y * 16 + x as usize;
+                                for tile_y in 0..8 {
+                                    let l = new_tile[tile * 16 + tile_y * 2];
+                                    let h = new_tile[tile * 16 + tile_y * 2 + 1];
+                                    for tile_x in 0..8 {
+                                        let l_bit = (l >> (7 - tile_x)) & 1;
+                                        let h_bit = (h >> (7 - tile_x)) & 1;
+                                        let color = l_bit + h_bit * 2;
+                                        let offset =
+                                            ((y * 8 + tile_y) * 128 + x * 8 + tile_x) * 4;
+
+                                        let color = match color {
+                                            0 => 255,
+                                            1 => 170,
+                                            2 => 80,
+                                            _ => 0,
+                                        };
+
+                                        out_tile[offset] = color;
+                                        out_tile[offset + 1] = color;
+                                        out_tile[offset + 2] = color;
+                                        out_tile[offset + 3] = 255;
+                                    }
+                                }
+                            }
+                        }
+                        self.src_tile = Some(new_tile);
+                        self.img_tileset =
+                            Some(opengl_graphics::Texture::from_image(&ImageBuffer::from_raw(128, 192, out_tile.to_vec()).unwrap(), &opengl_graphics::TextureSettings::new()));
+                            //opengl_graphics::Texture::from_memory_alpha(&out_tile, 128,192, &opengl_graphics::TextureSettings::new()).ok();
+                            //graphics::Image::from_rgba8(_ctx, 128, 192, &out_tile).unwrap();
+                    }
+                    None => {}
+                }
+                match msg.window0 {
+                    Some(new_w0) => {
+                        self.src_w0 = Some(new_w0);
+                    }
+                    None => {}
+                }
+                match msg.window1 {
+                    Some(new_w1) => {
+                        self.src_w1 = Some(new_w1);
+                    }
+                    None => {}
+                }
+                if updated_w0 || updated_s {
+                    if let Some(src_tile) = &self.src_tile{ 
+                        if let Some(src_w0) = &self.src_w0{
+                            let mut out_w0: [u8; 256 * 256 * 4] = [128; 256 * 256 * 4];
+                            for x in 0..32 {
+                                for y in 0..32 {
+                                    let tile = src_w0[x + y * 32] as usize;
+                                    let tile = if !msg.tile_select&&tile<=127{tile+256}else{tile};
+                                    for tile_y in 0..8 {
+                                        let l = src_tile[tile * 16 + tile_y * 2];
+                                        let h = src_tile[tile * 16 + tile_y * 2 + 1];
+                                        for tile_x in 0..8 {
+                                            let l_bit = (l >> (7 - tile_x)) & 1;
+                                            let h_bit = (h >> (7 - tile_x)) & 1;
+                                            let color = l_bit + h_bit * 2;
+                                            let offset = ((y * 8 + tile_y) * 256 + x * 8 + tile_x) * 4;
+
+                                            let color = match color {
+                                                0 => 255,
+                                                1 => 170,
+                                                2 => 80,
+                                                _ => 0,
+                                            };
+
+                                            out_w0[offset] = color;
+                                            out_w0[offset + 1] = color;
+                                            out_w0[offset + 2] = color;
+                                            out_w0[offset + 3] = 255;
+                                        }
+                                    }
+                                }
+                            }
+                            self.img_w0 = Some(opengl_graphics::Texture::from_image(&ImageBuffer::from_raw(256, 256, out_w0.to_vec()).unwrap(), &opengl_graphics::TextureSettings::new()));
+
+                        }
+                    }
+                }
+                if updated_w1 || updated_s {
+                    if let Some(src_tile) = &self.src_tile{ 
+                        if let Some(src_w1) = &self.src_w1{
+                        let mut out_w1: [u8; 256 * 256 * 4] = [128; 256 * 256 * 4];
+                    for x in 0..32 {
+                        for y in 0..32 {
+                            let tile = src_w1[x + y * 32] as usize;
+                            let tile = if !msg.tile_select&&tile<=127{tile+256}else{tile};
+                            for tile_y in 0..8 {
+                                let l = src_tile[tile * 16 + tile_y * 2];
+                                let h = src_tile[tile * 16 + tile_y * 2 + 1];
+                                for tile_x in 0..8 {
+                                    let l_bit = (l >> (7 - tile_x)) & 1;
+                                    let h_bit = (h >> (7 - tile_x)) & 1;
+                                    let color = l_bit + h_bit * 2;
+                                    let offset = ((y * 8 + tile_y) * 256 + x * 8 + tile_x) * 4;
+
+                                    let color = match color {
+                                        0 => 255,
+                                        1 => 170,
+                                        2 => 80,
+                                        _ => 0,
+                                    };
+
+                                    out_w1[offset] = color;
+                                    out_w1[offset + 1] = color;
+                                    out_w1[offset + 2] = color;
+                                    out_w1[offset + 3] = 255;
+                                }
+                            }
+                        }
+                    }
+                    self.img_w1 = Some(opengl_graphics::Texture::from_image(&ImageBuffer::from_raw(256, 256, out_w1.to_vec()).unwrap(), &opengl_graphics::TextureSettings::new()));
+                    //self.img_w1 = graphics::Image::from_rgba8(_ctx, 256, 256, &out_w1).unwrap();
+                }}}
+            }
+            Err(_e) => {
+                return;
+            }
+        }
+        // Rotate 2 radians per second.
+        self.rotation += 2.0 * args.dt;
+    }
+}
+pub fn main_loop(rx: mpsc::Receiver<ToDisplay>,tx: mpsc::Sender<ToEmu>){
+    // Change this to OpenGL::V2_1 if not working.
+    let opengl = OpenGL::V3_2;
+
+    // Create an Glutin window.
+    let mut window: Window = WindowSettings::new(
+            "spinning-square",
+            [512, 512]
+        )
+        .graphics_api(opengl)
+        .exit_on_esc(true)
+        .build()
+        .unwrap();
+
+    // Create a new game and run it.
+    let mut app = App {
+        rx,tx,
+        hram:None, buffer:None,img_tileset:None,img_w0:None,img_w1:None,
+        src_tile:None, src_w0:None, src_w1:None,
+        gl: GlGraphics::new(opengl),
+        rotation: 0.0
+    };
+    let mut settings = EventSettings::new();
+    settings.ups= 240;
+    let mut events = Events::new(settings);
+    
+    while let Some(e) = events.next(&mut window) {
+        if let Some(r) = e.render_args() {
+            app.render(&r);
+        }
+
+        if let Some(u) = e.update_args() {
+            app.update(&u);
+        }
+        
+        if let Event::Input(i,time) = e{
+            match i{
+                Input::Button(b) =>{
+                    match b.button{
+                        Button::Keyboard(k) =>{
+                            if let Some(key) = 
+                            match k{
+                                Key::Up =>   Some(EmuKeys::Up),
+                                Key::Down => Some(EmuKeys::Down),
+                                Key::Left => Some(EmuKeys::Left),
+                                Key::Right =>Some(EmuKeys::Right),
+                                Key::NumPad4 =>Some(EmuKeys::B),
+                                Key::NumPad5 =>Some(EmuKeys::A),
+                                Key::NumPad1 =>Some(EmuKeys::Select),
+                                Key::NumPad2 =>Some(EmuKeys::Start),
+                                _ => None,
+                            }{
+                                app.tx.send(
+                                match b.state{
+                                    ButtonState::Press => ToEmu::KeyDown(key),
+                                    ButtonState::Release => ToEmu::KeyUp(key), 
+                                }).expect("noooooo");
+                            }
+                        },
+                        _ => {}
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        
+    }
+}
+
+/*
 trait Widget {
     fn click(&mut self, x: f32, y: f32) -> Option<ToEmu>;
     fn draw(&self, _ctx: &mut Context, _res: &Resources) {}
@@ -446,3 +742,4 @@ impl EventHandler for Window {
             .unwrap();
     }
 }
+*/
