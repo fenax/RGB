@@ -82,7 +82,7 @@ impl Noise {
             if self.length == 0 {
                 self.enable = false;
             } else {
-                let old = self.length;
+                let _old = self.length;
                 self.length = self.length.saturating_sub(1);
              }
         }
@@ -344,7 +344,7 @@ impl Wave {
             if self.length == 0 {
                 self.enable = false;
             } else {
-                let old = self.length;
+                let _old = self.length;
                 self.length = self.length.saturating_sub(1);
              }
         }
@@ -365,7 +365,7 @@ impl Wave {
             let new = self.samples[((self.cursor) % 32) as usize] as f32;
             self.cursor = self.cursor % 32;
             //            println!("(1.0 - {}) * {} + {0} * {}",prop,last,new);
-            (prop * last + (1.0 - prop) * new)
+            prop * last + (1.0 - prop) * new
         } else {
             self.change_countdown -= WAVE_CLOCK_FACTOR;
             //            println!("nochange {} {}",self.cursor,self.samples[(self.cursor%32) as usize]);
@@ -587,7 +587,7 @@ impl Square {
             if self.length == 0 {
                 self.enable = false;
             } else {
-                let old = self.length;
+                let _old = self.length;
                 self.length = self.length.saturating_sub(1);
              }
         }
@@ -897,29 +897,29 @@ impl Audio {
     pub fn write_register(&mut self, a: u16, v: u8) {
         match a {
             0x26 => self.write_power_flag(v),
-            0x30...0x3f => self.wave3.write_sample_ram(a - 0x30, v),
+            0x30..=0x3f => self.wave3.write_sample_ram(a - 0x30, v),
             _ => {
                 if self.power {
                     match a {
-                        0x10...0x14 => {
+                        0x10..=0x14 => {
                             if AUDIO_DEBUG {
                                 print!("SQUARE 1 ");
                             }
                             self.square1.write_register(a - 0x10, v);
                         }
-                        0x16...0x19 => {
+                        0x16..=0x19 => {
                             if AUDIO_DEBUG {
                                 print!("SQUARE 2 ");
                             }
                             self.square2.write_register(a - 0x15, v);
                         }
-                        0x1a...0x1e => {
+                        0x1a..=0x1e => {
                             if AUDIO_DEBUG {
                                 print!("WAVE ");
                             }
                             self.wave3.write_register(a - 0x1a, v);
                         }
-                        0x20...0x23 => {
+                        0x20..=0x23 => {
                             if AUDIO_DEBUG {
                                 print!("NOISE ");
                             }
@@ -935,14 +935,14 @@ impl Audio {
     }
     pub fn read_register(&self, a: u16) -> u8 {
         match a {
-            0x10...0x14 => self.square1.read_register(a - 0x10),
-            0x16...0x19 => self.square2.read_register(a - 0x15),
-            0x1a...0x1e => self.wave3.read_register(a - 0x1a),
-            0x20...0x23 => self.noise4.read_register(a - 0x1f),
+            0x10..=0x14 => self.square1.read_register(a - 0x10),
+            0x16..=0x19 => self.square2.read_register(a - 0x15),
+            0x1a..=0x1e => self.wave3.read_register(a - 0x1a),
+            0x20..=0x23 => self.noise4.read_register(a - 0x1f),
             0x24 => self.read_stereo_volume(),
             0x25 => self.read_output_selection(),
             0x26 => self.read_power_flag(),
-            0x30...0x3f => self.wave3.read_sample_ram(a - 0x30),
+            0x30..=0x3f => self.wave3.read_sample_ram(a - 0x30),
             _ => 0xff,
         }
     }
@@ -1101,7 +1101,7 @@ impl Audio {
                 if self.override_sound4.unwrap_or(self.sound4_to_left) {
                     o += sample4;
                 }
-                (((o * self.volume_left as f32) / 16.0) as f32)
+                ((o * self.volume_left as f32) / 16.0) as f32
             };
             let out_right = {
                 let mut o = 0.0;
@@ -1117,7 +1117,7 @@ impl Audio {
                 if self.override_sound4.unwrap_or(self.sound4_to_right) {
                     o += sample4;
                 }
-                (((o * self.volume_right as f32) / 16.0) as f32)
+                ((o * self.volume_right as f32) / 16.0) as f32
             };
             //println!("AUDIO SAMPLES {} {} {} {}",sample1,sample2,sample3,sample4);
             return Interrupt::AudioSample(out_left, out_right);
