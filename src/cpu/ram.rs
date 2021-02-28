@@ -105,7 +105,7 @@ impl Ram {
             0x0f => self.interrupt.read_interrupt_request(),
 
             0x24 => self.audio.read_stereo_volume(),
-            0x10...0x3f => self.audio.read_register(a),
+            0x10..=0x3f => self.audio.read_register(a),
             0x40 => self.video.read_control(),
             0x41 => self.video.read_status(),
             0x42 => self.video.read_scroll_y(),
@@ -136,7 +136,7 @@ impl Ram {
 
             0x0f => self.interrupt.write_interrupt_request(v),
 
-            0x10...0x3f => self.audio.write_register(a, v),
+            0x10..=0x3f => self.audio.write_register(a, v),
             0x40 => self.video.write_control(v),
             0x41 => self.video.write_status(v),
             0x42 => self.video.write_scroll_y(v),
@@ -155,7 +155,7 @@ impl Ram {
     }
     pub fn read(&self, a: u16) -> u8 {
         match a {
-            0x0000...0x00ff =>
+            0x0000..=0x00ff =>
             //ROM #0 or DMG
             {
                 if self.booting {
@@ -164,47 +164,47 @@ impl Ram {
                     self.cart.rom[a as usize]
                 }
             }
-            0x0000...0x3fff =>
+            0x0000..=0x3fff =>
             //ROM #0
             {
                 self.cart.rom[(a % 0x4000) as usize]
             }
-            0x4000...0x7fff =>
+            0x4000..=0x7fff =>
             //ROM SWITCH
             {
                 self.cart.read_romswitch(a - 0x4000)
             }
-            0x8000...0x9fff =>
+            0x8000..=0x9fff =>
             //VRAM
             {
                 self.video.read_vram(a - 0x8000)
             }
-            0xa000...0xbfff =>
+            0xa000..=0xbfff =>
             //RAM SWITCH
             {
                 self.cart.read_ramswitch(a - 0xa000)
             }
-            0xc000...0xdfff =>
+            0xc000..=0xdfff =>
             //RAM INTERN
             {
                 self.ram[(a - 0xc000) as usize]
             }
-            0xe000...0xfdff =>
+            0xe000..=0xfdff =>
             //RAM INTERN EC
             {
                 self.ram[(a - 0xe000) as usize]
             }
-            0xfe00...0xfe9f =>
+            0xfe00..=0xfe9f =>
             //OAM
             {
                 self.oam[(a - 0xfe00) as usize]
             }
-            0xff00...0xff4b =>
+            0xff00..=0xff4b =>
             //IO
             {
                 self.read_io(a - 0xff00)
             }
-            0xff80...0xfffe =>
+            0xff80..=0xfffe =>
             //HIGH RAM
             {
                 self.hram[(a - 0xff80) as usize]
@@ -214,7 +214,7 @@ impl Ram {
             {
                 self.interrupt.read_interrupt_enable()
             }
-            0xfea0...0xfeff | 0xff4c...0xff7f =>
+            0xfea0..=0xfeff | 0xff4c..=0xff7f =>
             // empty, no IO
             {
                 println!("should not read there {:04x} ", a);
@@ -225,54 +225,54 @@ impl Ram {
 
     pub fn write(&mut self, a: u16, v: u8) {
         match a {
-            0x0000...0x1fff =>
+            0x0000..=0x1fff =>
             //ram enable
             {
                 //println!("ram enable {:04x} {:02x}",a,v);
             }
-            0x2000...0x3fff =>
+            0x2000..=0x3fff =>
             //rom bank number
             {
                 self.cart.set_rom_bank(v);
             }
-            0x4000...0x5fff =>
+            0x4000..=0x5fff =>
                 //ram bank number (or upper bit of rom bank)
                 {}
-            0x6000...0x7fff =>
+            0x6000..=0x7fff =>
                 //rom/ram bank mode
                 {}
-            0x8000...0x9fff =>
+            0x8000..=0x9fff =>
             //VRAM
             {
                 //println!("write to vram ({:04x}) = {:02x}",a,v);
                 self.video.write_vram(a - 0x8000, v);
             }
-            0xa000...0xbfff =>
+            0xa000..=0xbfff =>
             //RAM SWITCH
             {
                 self.cart.write_ramswitch(a - 0xa000, v)
             }
-            0xc000...0xdfff =>
+            0xc000..=0xdfff =>
             //RAM INTERN
             {
                 self.ram[(a % 0x2000) as usize] = v
             }
-            0xe000...0xfdff =>
+            0xe000..=0xfdff =>
             //RAM INTERN EC
             {
                 self.ram[(a % 0x2000) as usize] = v
             }
-            0xfe00...0xfe9f =>
+            0xfe00..=0xfe9f =>
             //OAM
             {
                 self.video.write_oam(a - 0xfe00, v)
             }
-            0xff00...0xff4b =>
+            0xff00..=0xff4b =>
             //IO
             {
                 self.write_io(a - 0xff00, v)
             }
-            0xff80...0xfffe =>
+            0xff80..=0xfffe =>
             //HIGH RAM
             {
                 self.hram[(a - 0xff80) as usize] = v
@@ -288,7 +288,7 @@ impl Ram {
             {
                 self.booting = false;
             }
-            0xfea0...0xfeff | 0xff4c...0xff4f | 0xff51...0xff7f =>
+            0xfea0..=0xfeff | 0xff4c..=0xff4f | 0xff51..=0xff7f =>
             // empty, no IO
             {
                 //println!("should not write there {:04x} {:02x}",a,v);
