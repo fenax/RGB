@@ -39,10 +39,6 @@ impl App {
 
         const GREEN: [f32; 4] = [0.0, 1.0, 0.0, 1.0];
 
-        let rotation = self.rotation;
-        let (x, y) = (args.window_size[0] / 2.0,
-                      args.window_size[1] / 2.0);
-
         let main_screen = Image::new().rect([256.0,256.0,160.0,144.0]);
         let window0_screen = Image::new().rect([0.0,0.0,256.0,256.0]);
         let window1_screen = Image::new().rect([256.0,0.0,256.0,256.0]);
