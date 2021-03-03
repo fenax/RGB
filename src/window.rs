@@ -3,8 +3,10 @@ use piston::event_loop::*;
 use piston::input::*;
 use glutin_window::GlutinWindow as Window;
 use opengl_graphics::{ GlGraphics, OpenGL };
+use opengl_graphics::GlyphCache;
+use graphics::text::Text;
 use image::ImageBuffer;
-
+use find_folder::Search;
 
 
 use std::sync::mpsc;
@@ -13,13 +15,30 @@ use EmuKeys;
 use ToEmu;
 use ToDisplay;
 
+struct Assets{
+    font: opengl_graphics::GlyphCache<'static>,
 
+}
+
+
+impl Assets{
+    fn new()->Self{
+        let path = find_folder::Search::ParentsThenKids(3, 3).for_folder("resources").unwrap();
+        let ref font = path.join("DejaVuSansMono.ttf");
+        let glyph_cache = opengl_graphics::GlyphCache::new(font,(),opengl_graphics::TextureSettings::new()).unwrap();
+        Self{
+            font : glyph_cache,
+        }
+    }
+}
 
 pub struct App {
     rx: mpsc::Receiver<ToDisplay>,
     tx: mpsc::Sender<ToEmu>,
     
-    hram:   Option<graphics::Text>,
+    assets: Assets,
+
+    hram:   Option<Vec<String>>,
     buffer: Option<opengl_graphics::Texture>,
     img_w0: Option<opengl_graphics::Texture>,
     img_w1: Option<opengl_graphics::Texture>,
@@ -30,14 +49,13 @@ pub struct App {
     src_w1: Option<Vec<u8>>,
 
     gl: GlGraphics, // OpenGL drawing backend.
-    rotation: f64   // Rotation for the square.
 }
 
 impl App {
     fn render(&mut self, args: &RenderArgs) {
         use graphics::*;
 
-        const GREEN: [f32; 4] = [0.0, 1.0, 0.0, 1.0];
+        const GREEN: [f32; 4] = [0.0, 1.0, 1.0, 1.0];
 
         let main_screen = Image::new().rect([256.0,256.0,160.0,144.0]);
         let window0_screen = Image::new().rect([0.0,0.0,256.0,256.0]);
@@ -45,27 +63,38 @@ impl App {
 
         let tileset_screen = Image::new().rect([0.0,256.0,128.0,192.0]);
 
+        let assets = &mut self.assets;
         let buff = &self.buffer;
         let w0 = &self.img_w0;
         let w1 = &self.img_w1;
         let tileset = &self.img_tileset;
+        let hram = &self.hram;
         self.gl.draw(args.viewport(), 
             |c, gl| {
             // Clear the screen.
             clear(GREEN, gl);
 
             if let Some(b) = buff{
-                main_screen.draw(b, &DrawState::default(), c.transform, gl);
+                main_screen.draw(b, &c.draw_state, c.transform, gl);
             }
             if let Some(img) = w0{
-                window0_screen.draw(img, &DrawState::default(), c.transform, gl);
+                window0_screen.draw(img, &c.draw_state, c.transform, gl);
             }
             if let Some(img) = w1{
-                window1_screen.draw(img, &DrawState::default(), c.transform, gl);
+                window1_screen.draw(img, &c.draw_state, c.transform, gl);
             }
             if let Some(img) = tileset{
-                tileset_screen.draw(img, &DrawState::default(), c.transform, gl);
+                tileset_screen.draw(img, &c.draw_state, c.transform, gl);
             }
+            if let Some(h) = hram{
+                let mut text_transformation = c.transform.trans(128.0,256.0+8.0);
+                let txt = Text::new(8);
+                for l in h{
+                    txt.draw(l, &mut assets.font, &c.draw_state, text_transformation, gl).expect("could not write text");
+                    text_transformation = text_transformation.trans(0.0,8.0);
+                }
+            }
+
         });
     }
 
@@ -78,16 +107,18 @@ impl App {
                 let mut ar: [u8; 160 * 144 * 4] = [128; 160 * 144 * 4];
 
                 let mut h: std::string::String = "".to_string();
-                let mut sep = "";
+                let mut sep = " ";
+                let mut hram_list:Vec<String> = Vec::new();
                 for i in 0..msg.hram.len() {
-                    h = format!("{}{}{:02x}", &h, &sep, msg.hram[i]);
+                    h = format!("{}{}{:02x} ", &h, &sep, msg.hram[i]);
                     if (i + 1) % 4 == 0 {
-                        sep = "\n";
+                        hram_list.push(h);
+                        h = String::new();
                     } else {
-                        sep = " ";
+                        
                     }
                 }
-                //self.hram = graphics::Text::new((h, self.resources.font, 12.0));
+                self.hram = Some(hram_list);
 
                 for i in 0..msg.back_buffer.len() {
                     ar[i * 4] = msg.back_buffer[i];
@@ -227,10 +258,9 @@ impl App {
                 return;
             }
         }
-        // Rotate 2 radians per second.
-        self.rotation += 2.0 * args.dt;
     }
 }
+
 pub fn main_loop(rx: mpsc::Receiver<ToDisplay>,tx: mpsc::Sender<ToEmu>){
     // Change this to OpenGL::V2_1 if not working.
     let opengl = OpenGL::V3_2;
@@ -251,7 +281,7 @@ pub fn main_loop(rx: mpsc::Receiver<ToDisplay>,tx: mpsc::Sender<ToEmu>){
         hram:None, buffer:None,img_tileset:None,img_w0:None,img_w1:None,
         src_tile:None, src_w0:None, src_w1:None,
         gl: GlGraphics::new(opengl),
-        rotation: 0.0
+        assets: Assets::new(),
     };
     let mut settings = EventSettings::new();
     settings.ups= 240;

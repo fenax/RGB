@@ -31,7 +31,7 @@ pub enum CpuState {
 pub fn instruct(ram: &mut Ram, reg: &mut Registers, alu: &mut Alu) -> CpuState {
     fn read_op(ram: &mut Ram, reg: &mut Registers) -> u8 {
         let r = ram.read(reg.pc);
-        //        print!("{:02x} ",r);
+            //    print!("{:02x} ",r);
         reg.pc += 1;
         r
     }
@@ -1232,7 +1232,7 @@ pub fn instruct(ram: &mut Ram, reg: &mut Registers, alu: &mut Alu) -> CpuState {
         }
         //HALT
         0x76 => {
-            //            println!("run unimplémented HALT");
+            println!("run HALT");
             CpuState::Halt
         }
 

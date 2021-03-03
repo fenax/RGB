@@ -6,6 +6,7 @@ authors = ["kasil <kasil@loutre.info>"]
 include = ["resources/DejaVuSansMono.ttf","resources/auto.png","resources/no.png","resources/yes.png"]
 
 [dependencies]
+find_folder = "*"
 image = "0.23"
 piston = "0.52"
 piston2d-graphics = "0.39"

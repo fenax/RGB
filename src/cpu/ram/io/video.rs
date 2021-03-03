@@ -1,7 +1,7 @@
 use cpu::ram::io::*;
 use cpu::ram::Ram;
 use std::cmp::Ordering;
-const VIDEO_DEBUG:bool = false;
+const VIDEO_DEBUG:bool = true;
 #[derive(Copy, Clone, Eq)]
 pub struct Sprite {
     pub y: u8,
@@ -413,40 +413,55 @@ impl Video {
         }
     }
 
-    pub fn step(ram: &mut Ram, _clock: u32) -> Interrupt {
+    pub fn step(ram: &mut Ram, _clock: u32) -> (Interrupt,Interrupt) {
+        let mut outvblank = Interrupt::None;
+        let mut outlcdc = Interrupt::None;
+
         if ram.video.enable_lcd {
             ram.video.line_clock += 1;
-            if ram.video.line < 144 {
-                if ram.video.enable_mode_0_hblank_check && ram.video.line_clock >= 64 {
-                    ram.interrupt.add_interrupt(&Interrupt::LcdcStatus);
+            if ram.video.line_clock == 20 {        //mode 2 -> 3
+
+            }else if ram.video.line_clock == 63 {  //mode 3 -> 0
+                if ram.video.line < 145 && ram.video.enable_mode_0_hblank_check {
+                    outlcdc = Interrupt::LcdcStatus;
                 }
-            }
-            if ram.video.line_clock >= 114 {
+
+            }else if ram.video.line_clock >= 114 { //mode 0 -> 2
+                //println!("end of line {} lcy = {}{}",ram.video.line, ram.video.line_compare,ram.video.enable_ly_lcy_check );
                 ram.video.line_clock = 0;
                 ram.video.line += 1;
+                if ram.video.enable_ly_lcy_check && ram.video.line == ram.video.line_compare{
+                    //println!("adding lcds interrupt");
+                    outlcdc = Interrupt::LcdcStatus;
+                }
                 if ram.video.line == 145 {
-                    ram.interrupt.add_interrupt(&Interrupt::VBlank);
-                    return Interrupt::VBlank;
+                    if ram.video.enable_mode_1_vblank_check{
+                        outlcdc = Interrupt::LcdcStatus;
+                    }
+                    outvblank = Interrupt::VBlank;
                 } else if ram.video.line >= 154 {
                     //TODO shorter line 153
                     ram.video.line = 0;
                     ram.video.window_line = 0;
-                    if ram.video.enable_mode_2_oam_check {
-                        ram.interrupt.add_interrupt(&Interrupt::LcdcStatus);
+                    if ram.video.enable_mode_2_oam_check && ram.video.line == 154 {
+                        outlcdc = Interrupt::LcdcStatus;
                     }
-                    return Interrupt::VBlankEnd;
+                    if ram.video.enable_ly_lcy_check && ram.video.line == ram.video.line_compare{
+                        outlcdc = Interrupt::LcdcStatus;
+                    }
+                    outvblank = Interrupt::VBlankEnd;
                 } else if ram.video.line < 145 {
-                    if ram.video.enable_mode_2_oam_check {
-                        ram.interrupt.add_interrupt(&Interrupt::LcdcStatus);
+                    if ram.video.enable_mode_2_oam_check && ram.video.line == 0{
+                        outlcdc = Interrupt::LcdcStatus;
                     }
                 }
             } else {
-                if ram.video.line_clock == 1 && ram.video.line < 144 {
+                if ram.video.line_clock == 21 && ram.video.line < 144 {
                     ram.video.draw_line();
                 }
             }
         }
-        Interrupt::None
+        (outlcdc,outvblank)
     }
     pub fn write_control(&mut self, v: u8) {
         if VIDEO_DEBUG{
@@ -489,7 +504,7 @@ impl Video {
         self.enable_mode_2_oam_check = v[5];
         self.enable_mode_1_vblank_check = v[4];
         self.enable_mode_0_hblank_check = v[3];
-        self.signal_ly_lcy_comparison = v[2];
+        //self.signal_ly_lcy_comparison = v[2];
     }
 
     pub fn read_status(&self) -> u8 {
@@ -499,7 +514,7 @@ impl Video {
         bit_merge(
             false,
             false,
-            self.signal_ly_lcy_comparison,
+            false,
             self.enable_mode_0_hblank_check,
             self.enable_mode_1_vblank_check,
             self.enable_mode_2_oam_check,
@@ -513,11 +528,13 @@ impl Video {
                 21..=63 => 3,
                 _ => 0,
             }
-        }
+        } + if self.line_compare == self.line {1<<3}else{0}
     }
 
     pub fn write_scroll_y(&mut self, v: u8) {
-        //        println!("write scroll y {}",v);
+        if VIDEO_DEBUG{
+        //    println!("write scroll y {}",v);
+        }
         self.scroll_y = v;
     }
 
@@ -526,7 +543,9 @@ impl Video {
     }
 
     pub fn write_scroll_x(&mut self, v: u8) {
-        //        println!("write scroll x {}",v);
+        if VIDEO_DEBUG{
+            println!("write scroll x {}",v);
+        }
         self.scroll_x = v;
     }
 
@@ -544,7 +563,9 @@ impl Video {
     }
 
     pub fn write_window_scroll_x(&mut self, v: u8) {
-        println!("write window scroll x {}",v);
+        if VIDEO_DEBUG{
+            println!("write window scroll x {}",v);
+        }
         self.window_scroll_x = v;
     }
 
@@ -560,7 +581,7 @@ impl Video {
     }
     pub fn write_line_compare(&mut self, v: u8) {
         if VIDEO_DEBUG{
-            println!("write line compare {}", v);
+            println!("write line compare {} current line is {}", v, self.line);
         }
         self.line_compare = v;
     }

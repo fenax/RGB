@@ -13,6 +13,7 @@ extern crate derivative;
 extern crate itertools;
 
 extern crate image;
+extern crate find_folder;
 
 use std::thread;
 
@@ -180,16 +181,17 @@ impl Gameboy {
         loop {
             clock = clock.wrapping_add(1);
             if !halted {
-                if cpu_wait == 0 {
-                    //print!("\n{}{}",self.alu,self.reg);
-
-                    match instruct(&mut self.ram, &mut self.reg, &mut self.alu) {
-                        CpuState::None => {}
-                        CpuState::Wait(t) => cpu_wait = t,
-                        CpuState::Halt => {
-                            halted = true;
+                if cpu_wait == 0{
+                    //print!("\n{:05x}{}{} ",clock,self.alu,self.reg);
+                    if !halted{
+                        match instruct(&mut self.ram, &mut self.reg, &mut self.alu) {
+                            CpuState::None => {}
+                            CpuState::Wait(t) => cpu_wait = t,
+                            CpuState::Halt => {
+                                halted = true;
+                            }
+                            CpuState::Stop => {}
                         }
-                        CpuState::Stop => {}
                     }
                     cpu::ram::io::InterruptManager::try_interrupt(&mut self.ram, &mut self.reg);
                 } else {
@@ -206,12 +208,14 @@ impl Gameboy {
             let i_audio = self.ram.audio.step(clock);
             ram::io::InterruptManager::step(&mut self.ram, clock);
 
-            if self.ram.interrupt.add_interrupt(&i_joypad)
-                || self.ram.interrupt.add_interrupt(&i_serial)
-                || self.ram.interrupt.add_interrupt(&i_timer)
-                || self.ram.interrupt.add_interrupt(&i_dma)
-                || self.ram.interrupt.add_interrupt(&i_video)
-            {
+            let mut interrupted = false;
+            interrupted = interrupted || self.ram.interrupt.add_interrupt(&i_joypad);
+            interrupted = interrupted || self.ram.interrupt.add_interrupt(&i_serial);
+            interrupted = interrupted || self.ram.interrupt.add_interrupt(&i_timer);
+            interrupted = interrupted || self.ram.interrupt.add_interrupt(&i_dma);
+            interrupted = interrupted || self.ram.interrupt.add_interrupt(&i_video.0);
+            interrupted = interrupted || self.ram.interrupt.add_interrupt(&i_video.1);
+            if interrupted{
                 halted = false;
             }
             match i_audio {
@@ -239,7 +243,7 @@ impl Gameboy {
                 }
                 _ => {}
             };
-            match i_video {
+            match i_video.1 {
                 cpu::ram::io::Interrupt::VBlank => {
 //                    println!("got VBLANK");
                     tx.send(ToDisplay::collect(&mut self.ram))

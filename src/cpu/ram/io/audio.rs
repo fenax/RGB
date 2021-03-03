@@ -645,7 +645,7 @@ impl Square {
         }
     }
 
-    pub fn step(&mut self, clock: u32) {
+    pub fn step(&mut self, clock: u32) { 
         if self.enable {
             self.sample_count += 1;
             self.sample_total += self.change();
