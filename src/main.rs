@@ -122,7 +122,7 @@ struct Gameboy {
     ram: cpu::ram::Ram,
     reg: cpu::registers::Registers,
     alu: cpu::alu::Alu,
-
+    running:bool,
     got_tick: bool,
 }
 impl Gameboy {
@@ -132,6 +132,7 @@ impl Gameboy {
             reg: cpu::registers::Registers::origin(),
             alu: cpu::alu::Alu::origin(),
             got_tick: false,
+            running:true,
         }
     }
 
@@ -151,6 +152,7 @@ impl Gameboy {
             ToEmu::Command(EmuCommand::PrintAudio4) => println!("#### audio 4\n{:?}",self.ram.audio.noise4),
             ToEmu::Command(EmuCommand::PrintVideo) => println!("#### video\n{:?}",self.ram.video),
             ToEmu::Command(EmuCommand::Save) => self.ram.cart.save(),
+            ToEmu::Command(EmuCommand::Quit) => self.running = false,
             _ => println!("{:?}", t),
         }
     }
@@ -179,6 +181,9 @@ impl Gameboy {
         //s.write(&buffer);
 
         loop {
+            if self.running == false{
+                break;
+            }
             clock = clock.wrapping_add(1);
             if !halted {
                 if cpu_wait == 0{
@@ -190,7 +195,9 @@ impl Gameboy {
                             CpuState::Halt => {
                                 halted = true;
                             }
-                            CpuState::Stop => {}
+                            CpuState::Stop => {
+                                panic!("Stop unimplemented, unsure what it should do");
+                            }
                         }
                     }
                     cpu::ram::io::InterruptManager::try_interrupt(&mut self.ram, &mut self.reg);
@@ -245,7 +252,7 @@ impl Gameboy {
             };
             match i_video.1 {
                 cpu::ram::io::Interrupt::VBlank => {
-//                    println!("got VBLANK");
+                    println!("got VBLANK");
                     tx.send(ToDisplay::collect(&mut self.ram))
                         .unwrap();
                     self.ram.video.clear_update();

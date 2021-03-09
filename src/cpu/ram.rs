@@ -104,7 +104,7 @@ impl Ram {
 
             0x0f => self.interrupt.read_interrupt_request(),
 
-            0x24 => self.audio.read_stereo_volume(),
+            //0x24 => self.audio.read_stereo_volume(),
             0x10..=0x3f => self.audio.read_register(a),
             0x40 => self.video.read_control(),
             0x41 => self.video.read_status(),
@@ -125,6 +125,7 @@ impl Ram {
         }
     }
     pub fn write_io(&mut self, a: u16, v: u8) {
+        println!("write io {} {}",a,v );
         match a {
             0x00 => self.joypad.write(v),
             0x01 => self.serial.write_data(v),

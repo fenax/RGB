@@ -1,6 +1,6 @@
 use cpu::ram::io::*;
 
-const AUDIO_DEBUG: bool = false;
+const AUDIO_DEBUG: bool = true;
 
 /*
      NRx0 NRx1 NRx2 NRx3 NRx4
@@ -79,20 +79,19 @@ impl Noise {
 
     pub fn lenght_decr(&mut self) {
         if self.enable && self.length_enable {
+            self.length = self.length.saturating_sub(1);
             if self.length == 0 {
                 self.enable = false;
-            } else {
-                let _old = self.length;
-                self.length = self.length.saturating_sub(1);
-             }
+            }
         }
     }
 
     pub fn step_envelope(&mut self) {
         if self.enable == false || self.envelope_period == 0 {
+            self.envelope_timer = 0;
             return;
         }
-        self.envelope_timer -= 1;
+        self.envelope_timer = self.envelope_timer.saturating_sub(1);
         if self.envelope_timer == 0 {
             self.envelope_timer = self.envelope_period;
             let t = if self.envelope_add_mode {
@@ -189,13 +188,6 @@ impl Noise {
             ret
         };
         ret * self.volume as f32 / 16.0
-        /*
-        if self.enable{
-            (self.change(sample_len, clock) * self.envelope_volume as f64)
-            /16.0 - 0.5
-        }else{
-            0.0
-        }*/
     }
 
     pub fn write_lp(&mut self, v: u8) {
@@ -205,6 +197,9 @@ impl Noise {
         }
     }
     pub fn read_lp(&self) -> u8 {
+        if AUDIO_DEBUG{
+            println!("read length 0xff");
+        }
         0xff
     }
     pub fn write_envelope(&mut self, v: u8) {
@@ -224,6 +219,9 @@ impl Noise {
             r |= 0x8
         };
         r |= self.envelope_period;
+        if AUDIO_DEBUG{
+            println!("read envelope {} {} {}", self.envelope_volume, self.envelope_add_mode, self.envelope_period);
+        }
         r
     }
     pub fn write_shift_reg(&mut self, v: u8) {
@@ -243,6 +241,9 @@ impl Noise {
             r |= 0x8
         };
         r |= self.divisor_code;
+        if AUDIO_DEBUG{
+            println!("read shift reg {} {} {}", self.clock_shift, self. width_mode, self.divisor_code);
+        }
         r
     }
     pub fn write_frequency_hi(&mut self, v: u8) {
@@ -253,6 +254,9 @@ impl Noise {
         }
     }
     pub fn read_frequency_hi(&self) -> u8 {
+        if AUDIO_DEBUG{
+            println!("read frequency high {}", self.length_enable);
+        }
         if self.length_enable {
             0xff
         } else {
@@ -260,6 +264,7 @@ impl Noise {
         }
     }
     pub fn write_register(&mut self, a: u16, v: u8) {
+        print!("NOISE ");
         match a {
             0 => {}
             1 => self.write_lp(v),
@@ -270,6 +275,7 @@ impl Noise {
         }
     }
     pub fn read_register(&self, a: u16) -> u8 {
+        print!("NOISE ");
         match a {
             0 => 0xff,
             1 => self.read_lp(),
@@ -341,12 +347,10 @@ impl Wave {
 
     pub fn lenght_decr(&mut self) {
         if self.enable && self.length_enable {
+            self.length = self.length.saturating_sub(1);
             if self.length == 0 {
                 self.enable = false;
-            } else {
-                let _old = self.length;
-                self.length = self.length.saturating_sub(1);
-             }
+            }
         }
     }
 
@@ -427,6 +431,9 @@ impl Wave {
         }
     }
     pub fn read_power(&self) -> u8 {
+        if AUDIO_DEBUG{
+            println!("read power {}", self.power);
+        }
         if self.power {
             0xff
         } else {
@@ -440,6 +447,9 @@ impl Wave {
         }
     }
     pub fn read_lp(&self) -> u8 {
+        if AUDIO_DEBUG{
+            println!("read length 0xff");
+        }
         0xff
     }
 
@@ -451,6 +461,9 @@ impl Wave {
         }
     }
     pub fn read_frequency_lo(&self) -> u8 {
+        if AUDIO_DEBUG{
+            println!("read frequency lo 0xff");
+        }
         0xff
     }
     pub fn write_frequency_hi(&mut self, v: u8) {
@@ -466,6 +479,9 @@ impl Wave {
         }
     }
     pub fn read_frequency_hi(&self) -> u8 {
+        if AUDIO_DEBUG{
+            println!("read frequency high {}", self.length_enable);
+        }
         if self.length_enable {
             0xff
         } else {
@@ -483,6 +499,7 @@ impl Wave {
         (self.samples[(a * 2) as usize] << 4) | self.samples[(a * 2) as usize + 1]
     }
     pub fn write_register(&mut self, a: u16, v: u8) {
+        print!("WAVE ");
         match a {
             0 => self.write_power(v),
             1 => self.write_lp(v),
@@ -493,6 +510,7 @@ impl Wave {
         }
     }
     pub fn read_register(&self, a: u16) -> u8 {
+        print!("WAVE ");
         match a {
             0 => self.read_power(),
             1 => self.read_lp(),
@@ -584,20 +602,20 @@ impl Square {
 
     pub fn lenght_decr(&mut self) {
         if self.enable && self.length_enable {
+            self.length = self.length.saturating_sub(1);
             if self.length == 0 {
                 self.enable = false;
-            } else {
-                let _old = self.length;
-                self.length = self.length.saturating_sub(1);
-             }
+            }
+        println!("SQUARE lenght_decr {}", self.length);
         }
     }
 
     pub fn step_envelope(&mut self) {
         if self.enable == false || self.envelope_period == 0 {
+            self.envelope_timer = 0;
             return;
         }
-        self.envelope_timer -= 1;
+        self.envelope_timer = self.envelope_timer.saturating_sub(1);
         if self.envelope_timer == 0 {
             self.envelope_timer = self.envelope_period;
             let t = if self.envelope_add_mode {
@@ -629,6 +647,8 @@ impl Square {
                 );*/
                 self.frequency = self.shadow_frequency;
             }
+        }else{
+             self.sweep_timer = 0;
         }
     }
     pub fn calculate_sweep(&mut self) {
@@ -666,7 +686,7 @@ impl Square {
             self.volume = self.envelope_volume;
             self.envelope_timer = self.envelope_period;
             //self.change(clock);
-            self.length = 64 - self.set_length;
+            self.length = self.set_length;
             if self.sweep_timer > 0 && self.sweep_shift > 0 {
                 self.calculate_sweep();
             }
@@ -717,12 +737,6 @@ impl Square {
         self.sample_total = 0.0;
         self.sample_count = 0;
         ret * self.volume as f32 / 16.0
-        /*if self.enable{
-            self.change(sample_len, clock) * self.volume as f64
-            /16.0
-        }else{
-            0.0
-        }*/
     }
 
     pub fn write_sweep(&mut self, v: u8) {
@@ -737,6 +751,9 @@ impl Square {
         }
     }
     pub fn read_sweep(&self) -> u8 {
+        if AUDIO_DEBUG{
+            println!("read sweep {} {} {}",self.sweep_period,self.sweep_negate,self.sweep_shift );
+        }
         let mut r = self.sweep_period << 4;
         if self.sweep_negate {
             r |= 0x8
@@ -750,14 +767,19 @@ impl Square {
         if self.set_length == 0 {
             self.length = 63;
         } else {
-            self.length = self.set_length;
+            self.length = 64 - self.set_length;
         }
+        self.set_length = self.length;
         if AUDIO_DEBUG {
             println!("write length {} duty {}", self.set_length, self.duty);
         }
     }
     pub fn read_lp(&self) -> u8 {
-        (self.duty << 6) | 0x3f
+        let value = (self.duty << 6) | 0x3f;
+        if AUDIO_DEBUG{
+            println!("read lp {} {}", self.duty, value);
+        }
+        value
     }
     pub fn write_envelope(&mut self, v: u8) {
         self.envelope_volume = (v >> 4) & 0xf;
@@ -771,6 +793,9 @@ impl Square {
         }
     }
     pub fn read_envelope(&self) -> u8 {
+        if AUDIO_DEBUG{
+            println!("read envelope {} {} {}", self.envelope_volume, self.envelope_add_mode, self.envelope_period);
+        }
         let mut r = self.envelope_volume << 4;
         if self.envelope_add_mode {
             r |= 0x8
@@ -808,6 +833,7 @@ impl Square {
         }
     }
     pub fn write_register(&mut self, a: u16, v: u8) {
+        print!("SQUARE ");
         match a {
             0 => self.write_sweep(v),
             1 => self.write_lp(v),
@@ -818,6 +844,7 @@ impl Square {
         }
     }
     pub fn read_register(&self, a: u16) -> u8 {
+        print!("SQUARE ");
         match a {
             0 => self.read_sweep(),
             1 => self.read_lp(),
@@ -895,6 +922,7 @@ impl Audio {
     }
 
     pub fn write_register(&mut self, a: u16, v: u8) {
+        print!("w {:02x}={:02x}",a,v);
         match a {
             0x26 => self.write_power_flag(v),
             0x30..=0x3f => self.wave3.write_sample_ram(a - 0x30, v),
@@ -934,6 +962,8 @@ impl Audio {
         }
     }
     pub fn read_register(&self, a: u16) -> u8 {
+        print!("r {:02x} ",a);
+        let r = 
         match a {
             0x10..=0x14 => self.square1.read_register(a - 0x10),
             0x16..=0x19 => self.square2.read_register(a - 0x15),
@@ -944,7 +974,9 @@ impl Audio {
             0x26 => self.read_power_flag(),
             0x30..=0x3f => self.wave3.read_sample_ram(a - 0x30),
             _ => 0xff,
-        }
+        };
+        print!("r >{:02x}\n",r);
+        r
     }
     pub fn write_stereo_volume(&mut self, v: u8) {
         self.left_enable = bit(v, 7);
@@ -984,6 +1016,11 @@ impl Audio {
         self.sound1_to_right = bit(v, 0);
     }
     pub fn read_output_selection(&self) -> u8 {
+        if AUDIO_DEBUG{
+            println!("read output selection 1r{} 2r{} 3r{} 4r{} 1l{} 2l{} 3l{} 4l{}",
+             self.sound1_to_right, self.sound2_to_right, self.sound3_to_right, self.sound4_to_right,
+             self.sound1_to_left, self.sound2_to_left, self.sound3_to_left, self.sound4_to_left);
+        }
         bit_merge(
             self.sound1_to_right,
             self.sound2_to_right,
@@ -997,17 +1034,26 @@ impl Audio {
     }
     pub fn write_power_flag(&mut self, v: u8) {
         self.power = bit(v, 7);
+
         if !self.power {
+            if AUDIO_DEBUG {
+                println!("DISABLING AUDIO POWER");
+            }
             self.square1.clear();
             self.square2.clear();
             self.wave3.clear();
             self.noise4.clear();
             self.write_stereo_volume(0x00);
             self.write_output_selection(0x00);
+            if AUDIO_DEBUG {
+                println!("DISABLED AUDIO POWER");
+            }
+        }else{
+            if AUDIO_DEBUG {
+                println!("ENABLING AUDIO POWER");
+            }
         }
-        if AUDIO_DEBUG {
-            println!("setting audio power to {}", self.power);
-        }
+
     }
     pub fn read_power_flag(&self) -> u8 {
         if AUDIO_DEBUG {
@@ -1052,9 +1098,9 @@ impl Audio {
         self.square2.step(clock);
         self.wave3.step(clock);
         self.noise4.step(clock);
-        if clock % 0x3ff == 0 {
+        if clock % 0x800 == 0 {
             //runs at 512 hz
-            match clock % 0x1fff >> (4 + 4 + 2) {
+            match (clock / 0x800) % 8 {
                 0 => {
                     self.length_decr();
                 }

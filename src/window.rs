@@ -267,11 +267,11 @@ pub fn main_loop(rx: mpsc::Receiver<ToDisplay>,tx: mpsc::Sender<ToEmu>){
 
     // Create an Glutin window.
     let mut window: Window = WindowSettings::new(
-            "spinning-square",
+            "Rust Gameboy Emulator",
             [512, 512]
         )
         .graphics_api(opengl)
-        .exit_on_esc(true)
+        .exit_on_esc(false)
         .build()
         .unwrap();
 
@@ -318,6 +318,18 @@ pub fn main_loop(rx: mpsc::Receiver<ToDisplay>,tx: mpsc::Sender<ToEmu>){
                                     ButtonState::Press => ToEmu::KeyDown(key),
                                     ButtonState::Release => ToEmu::KeyUp(key), 
                                 }).expect("noooooo");
+                            }else{
+                                if k == Key::Escape{
+                                    let msg = ToEmu::Command(EmuCommand::Save);
+                                    match app.tx.send(msg){
+                                        Ok(_) => {}
+                                        Err(e) =>{
+                                            println!("{:?}", e);
+                                            panic!("I die");
+                                        }
+                                    }
+                                    app.tx.send(ToEmu::Command(EmuCommand::Quit)).expect("no quit ?");
+                                }
                             }
                         },
                         _ => {}

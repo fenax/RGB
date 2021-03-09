@@ -245,6 +245,8 @@ impl Cartridge {
         self.ramswitch[self.cur_ram][a as usize]
     }
     pub fn write_ramswitch(&mut self, a: u16, v: u8) {
+        println!("write to ramswitch {:02x}:{:04x} = {:02x} {}", self.cur_ram,a,v,v as char );
+        if self.ramswitch.len() == 0{ return};
         self.ramswitch[self.cur_ram][a as usize] = v;
     }
     pub fn is_cgb(&self) -> bool {
@@ -319,6 +321,7 @@ impl Cartridge {
                 for bank in &self.ramswitch {
                     v.write_all(bank).expect("failed to write save");
                 }
+                println!("game saved into {}", &self.savefile);
             }
             Err(e) => panic!("failed to open save file {:?}", e),
         }

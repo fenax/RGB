@@ -529,7 +529,10 @@ pub fn instruct(ram: &mut Ram, reg: &mut Registers, alu: &mut Alu) -> CpuState {
         //ADD A,L
         0x85 => alu.add(&mut reg.a, reg.l),
         //ADD A,(HL)
-        0x86 => alu.add(&mut reg.a, ram.read8(reg.l, reg.h)),
+        0x86 => {
+            alu.add(&mut reg.a, ram.read8(reg.l, reg.h));
+            CpuState::Wait(1)
+        }
         //ADD A,A
         0x87 => {
             let a = reg.a;
@@ -561,7 +564,10 @@ pub fn instruct(ram: &mut Ram, reg: &mut Registers, alu: &mut Alu) -> CpuState {
         //ADC A,L
         0x8d => alu.adc(&mut reg.a, reg.l),
         //ADC A,(HL)
-        0x8e => alu.adc(&mut reg.a, ram.read8(reg.l, reg.h)),
+        0x8e => {
+            alu.adc(&mut reg.a, ram.read8(reg.l, reg.h));
+            CpuState::Wait(1)
+        }
         //ADC A,A
         0x8f => {
             let a = reg.a;
@@ -581,7 +587,10 @@ pub fn instruct(ram: &mut Ram, reg: &mut Registers, alu: &mut Alu) -> CpuState {
         //SUB L
         0x95 => alu.sub(&mut reg.a, reg.l),
         //SUB (HL)
-        0x96 => alu.sub(&mut reg.a, ram.read8(reg.l, reg.h)),
+        0x96 => {
+            alu.sub(&mut reg.a, ram.read8(reg.l, reg.h));
+            CpuState::Wait(1)
+        }
         //SUB A
         0x97 => {
             let a = reg.a;
@@ -590,7 +599,8 @@ pub fn instruct(ram: &mut Ram, reg: &mut Registers, alu: &mut Alu) -> CpuState {
         //SUB d8
         0xd6 => {
             let arg1 = read_op(ram, reg);
-            alu.sub(&mut reg.a, arg1)
+            alu.sub(&mut reg.a, arg1);
+            CpuState::Wait(1)
         }
 
         //SBC A,B
@@ -606,7 +616,10 @@ pub fn instruct(ram: &mut Ram, reg: &mut Registers, alu: &mut Alu) -> CpuState {
         //SBC A,L
         0x9d => alu.sbc(&mut reg.a, reg.l),
         //SBC A,(HL)
-        0x9e => alu.sbc(&mut reg.a, ram.read8(reg.l, reg.h)),
+        0x9e => {
+            alu.sbc(&mut reg.a, ram.read8(reg.l, reg.h));
+            CpuState::Wait(1)
+        }
         //SBC A,A
         0x9f => {
             let a = reg.a;
@@ -615,18 +628,21 @@ pub fn instruct(ram: &mut Ram, reg: &mut Registers, alu: &mut Alu) -> CpuState {
         //SBC A,d8
         0xde => {
             let arg1 = read_op(ram, reg);
-            alu.sbc(&mut reg.a, arg1)
+            alu.sbc(&mut reg.a, arg1);
+            CpuState::Wait(1)
         }
 
         //ADD A,d8
         0xc6 => {
             let arg1 = read_op(ram, reg);
-            alu.add(&mut reg.a, arg1)
+            alu.add(&mut reg.a, arg1);
+            CpuState::Wait(1)
         }
         //ADC A,d8
         0xce => {
             let arg1 = read_op(ram, reg);
-            alu.adc(&mut reg.a, arg1)
+            alu.adc(&mut reg.a, arg1);
+            CpuState::Wait(1)
         }
 
         //ADD SP,r8
@@ -763,7 +779,10 @@ pub fn instruct(ram: &mut Ram, reg: &mut Registers, alu: &mut Alu) -> CpuState {
         0xa3 => alu.and(&mut reg.a, reg.e),
         0xa4 => alu.and(&mut reg.a, reg.h),
         0xa5 => alu.and(&mut reg.a, reg.l),
-        0xa6 => alu.and(&mut reg.a, ram.read8(reg.l, reg.h)),
+        0xa6 => {
+            alu.and(&mut reg.a, ram.read8(reg.l, reg.h));
+            CpuState::Wait(1)
+        }
         0xa7 => {
             let a = reg.a;
             alu.and(&mut reg.a, a)
@@ -771,7 +790,8 @@ pub fn instruct(ram: &mut Ram, reg: &mut Registers, alu: &mut Alu) -> CpuState {
         //AND d8
         0xe6 => {
             let arg1 = read_op(ram, reg);
-            alu.and(&mut reg.a, arg1)
+            alu.and(&mut reg.a, arg1);
+            CpuState::Wait(1)
         }
         //XOR
         0xa8 => alu.xor(&mut reg.a, reg.b),
@@ -780,7 +800,10 @@ pub fn instruct(ram: &mut Ram, reg: &mut Registers, alu: &mut Alu) -> CpuState {
         0xab => alu.xor(&mut reg.a, reg.e),
         0xac => alu.xor(&mut reg.a, reg.h),
         0xad => alu.xor(&mut reg.a, reg.l),
-        0xae => alu.xor(&mut reg.a, ram.read8(reg.l, reg.h)),
+        0xae => {
+            alu.xor(&mut reg.a, ram.read8(reg.l, reg.h));
+            CpuState::Wait(1)
+        }
         0xaf => {
             let a = reg.a;
             alu.xor(&mut reg.a, a)
@@ -788,7 +811,8 @@ pub fn instruct(ram: &mut Ram, reg: &mut Registers, alu: &mut Alu) -> CpuState {
         //XOR d8
         0xee => {
             let arg1 = read_op(ram, reg);
-            alu.xor(&mut reg.a, arg1)
+            alu.xor(&mut reg.a, arg1);
+            CpuState::Wait(1)
         }
 
         //OR
@@ -798,7 +822,10 @@ pub fn instruct(ram: &mut Ram, reg: &mut Registers, alu: &mut Alu) -> CpuState {
         0xb3 => alu.or(&mut reg.a, reg.e),
         0xb4 => alu.or(&mut reg.a, reg.h),
         0xb5 => alu.or(&mut reg.a, reg.l),
-        0xb6 => alu.or(&mut reg.a, ram.read8(reg.l, reg.h)),
+        0xb6 => {
+            alu.or(&mut reg.a, ram.read8(reg.l, reg.h));
+            CpuState::Wait(1)
+        }
         0xb7 => {
             let a = reg.a;
             alu.or(&mut reg.a, a)
@@ -806,7 +833,8 @@ pub fn instruct(ram: &mut Ram, reg: &mut Registers, alu: &mut Alu) -> CpuState {
         //OR d8
         0xf6 => {
             let arg1 = read_op(ram, reg);
-            alu.or(&mut reg.a, arg1)
+            alu.or(&mut reg.a, arg1);
+            CpuState::Wait(1)
         }
         //CP
         0xb8 => alu.cp(reg.a, reg.b),
@@ -815,7 +843,10 @@ pub fn instruct(ram: &mut Ram, reg: &mut Registers, alu: &mut Alu) -> CpuState {
         0xbb => alu.cp(reg.a, reg.e),
         0xbc => alu.cp(reg.a, reg.h),
         0xbd => alu.cp(reg.a, reg.l),
-        0xbe => alu.cp(reg.a, ram.read8(reg.l, reg.h)),
+        0xbe => {
+            alu.cp(reg.a, ram.read8(reg.l, reg.h));
+            CpuState::Wait(1)
+        }
         0xbf => {
             let a = reg.a;
             alu.cp(reg.a, a)
@@ -823,7 +854,8 @@ pub fn instruct(ram: &mut Ram, reg: &mut Registers, alu: &mut Alu) -> CpuState {
         //CP d8
         0xfe => {
             let arg1 = read_op(ram, reg);
-            alu.cp(reg.a, arg1)
+            alu.cp(reg.a, arg1);
+            CpuState::Wait(1)
         }
 
         //LDH (a8),a

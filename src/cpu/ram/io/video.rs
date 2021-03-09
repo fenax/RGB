@@ -1,7 +1,7 @@
 use cpu::ram::io::*;
 use cpu::ram::Ram;
 use std::cmp::Ordering;
-const VIDEO_DEBUG:bool = true;
+const VIDEO_DEBUG:bool = false;
 #[derive(Copy, Clone, Eq)]
 pub struct Sprite {
     pub y: u8,
@@ -507,6 +507,18 @@ impl Video {
         //self.signal_ly_lcy_comparison = v[2];
     }
 
+    pub fn get_video_mode(&self)-> u8{
+        if self.line >= 144 {
+            1
+        } else {
+            match self.line_clock {
+                1..=20 => 2,
+                21..=63 => 3,
+                _ => 0,
+            }
+        }
+    }
+
     pub fn read_status(&self) -> u8 {
         if VIDEO_DEBUG{
             println!("read status {} {}", self.line, self.line_clock);
@@ -520,15 +532,7 @@ impl Video {
             self.enable_mode_2_oam_check,
             self.enable_ly_lcy_check,
             true,
-        ) + if self.line >= 144 {
-            1
-        } else {
-            match self.line_clock {
-                1..=20 => 2,
-                21..=63 => 3,
-                _ => 0,
-            }
-        } + if self.line_compare == self.line {1<<3}else{0}
+        ) + self.get_video_mode() + if self.line_compare == self.line {1<<3}else{0}
     }
 
     pub fn write_scroll_y(&mut self, v: u8) {
@@ -619,9 +623,15 @@ impl Video {
         self.sprite_palette_1[2] = base[((v >> 6) & 3) as usize];
     }
     pub fn write_oam(&mut self, a: u16, v: u8) {
+        if self.get_video_mode() > 1{
+            println!("##########################Tried to write to oam in mode2 or mode3");
+        }
         self.oam[(a >> 2) as usize].write(a & 0x3, v);
     }
     pub fn write_vram(&mut self, a: u16, v: u8) {
+        if self.get_video_mode() == 3{
+            println!("##########################Tried to write to vram in mode3");
+        }
         match a {
             0..=0x17ff => {
                 self.updated_tiles = true;
@@ -656,6 +666,9 @@ impl Video {
         self.vram[a as usize] = v;
     }
     pub fn read_vram(&self, a: u16) -> u8 {
+        if self.get_video_mode() == 3{
+            println!("##########################Tried to read from vram in mode3");
+        }
         self.vram[a as usize]
     }
 }
