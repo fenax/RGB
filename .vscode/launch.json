@@ -1,0 +1,70 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "probe-rs-debug",
+            "request": "launch",
+            "name": "probe-rs Test",
+            "cwd": "",
+            "connectUnderReset": false,
+            "chip": "RP2040",
+            "flashingConfig": {
+                "flashingEnabled": true,
+                "resetAfterFlashing": true,
+                "haltAfterReset": true
+            },
+            "programBinary": "RGB/target/thumbv6m-none-eabi/debug/RGB",
+            "coreConfigs": [
+                {
+                    "coreIndex": 0,
+                    "programBinary": "./target/thumbv6m-none-eabi/debug/RGB"
+                },
+                {
+                    "coreIndex": 1,
+                    "programBinary": "./target/thumbv6m-none-eabi/debug/RGB"
+                }
+            ],
+            "consoleLogLevel": "Info", //Error, Warn, Info, Debug, Trace
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'RGB'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=RGB",
+                    "--package=RGB"
+                ],
+                "filter": {
+                    "name": "RGB",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'RGB'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=RGB",
+                    "--package=RGB"
+                ],
+                "filter": {
+                    "name": "RGB",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        }
+    ]
+}

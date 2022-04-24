@@ -2,10 +2,9 @@ pub mod audio;
 pub mod video;
 pub use self::audio::Audio;
 pub use self::video::Video;
-
-use cpu::ram::Ram;
-use cpu::*;
-use EmuKeys;
+use crate::cpu::*;
+use defmt::info;
+use crate::EmuKeys;
 
 pub fn bit(var: u8, bit: u8) -> bool {
     var & (1 << bit) != 0
@@ -190,7 +189,7 @@ impl InterruptManager {
         )
     }
     pub fn read_interrupt_request(&self) -> u8 {
-        println!(
+        info!(
             "read interrupt request {} {} {} {} {}",
             self.request_vblank,
             self.request_lcd_stat,
@@ -215,7 +214,7 @@ impl InterruptManager {
         self.enable_timer = bit(v, 2);
         self.enable_serial = bit(v, 3);
         self.enable_joypad = bit(v, 4);
-        println!(
+        info!(
             "write interrupt enable {} {} {} {} {}",
             self.enable_vblank,
             self.enable_lcd_stat,
@@ -231,7 +230,7 @@ impl InterruptManager {
         self.request_timer = bit(v, 2);
         self.request_serial = bit(v, 3);
         self.request_joypad = bit(v, 4);
-        println!(
+        info!(
             "write interrupt request {} {} {} {} {}",
             self.request_vblank,
             self.request_lcd_stat,
@@ -285,7 +284,7 @@ impl Joypad {
               |          |*/
     // TODO implément button interrupt
     pub fn press_key(&mut self, k: EmuKeys) {
-        println!("keypress {:?}", &k);
+        info!("keypress {:?}", &k);
         self.interrupt = true;
         match k {
             EmuKeys::A => self.a = true,
@@ -458,20 +457,20 @@ impl Timer {
     }
     pub fn write_div(&mut self, _v: u8) {
         self.div = 0;
-        println!("TIMER write DIV {}", _v);
+        info!("TIMER write DIV {}", _v);
     }
     pub fn write_tima(&mut self, v: u8) {
         self.tima = v;
-        println!("TIMER write TIMA {}", v);
+        info!("TIMER write TIMA {}", v);
     }
     pub fn write_tma(&mut self, v: u8) {
         self.tma = v;
-        println!("TIMER write TMA {}", v);
+        info!("TIMER write TMA {}", v);
     }
     pub fn write_control(&mut self, v: u8) {
         self.div_sel = v & 0x3;
         self.start = v & 0x4 != 0;
-        println!(
+        info!(
             "TIMER write control {:02x} {} {}",
             v, self.div_sel, self.start
         );

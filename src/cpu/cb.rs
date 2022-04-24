@@ -1,6 +1,6 @@
 //mod cpu;
 
-use cpu::*;
+use crate::cpu::*;
 
 pub fn instr_cb(ram: &mut Ram, reg: &mut Registers, alu: &mut Alu, op: u8) -> CpuState {
     let op_reg = op & 0x7;

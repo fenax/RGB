@@ -1,5 +1,6 @@
-use cpu::*;
-use std::fmt;
+use crate::cpu::*;
+use defmt::intern;
+use defmt::Format;
 
 pub struct Alu {
     pub flag_zero: bool,
@@ -8,16 +9,14 @@ pub struct Alu {
     pub flag_carry: bool,
 }
 
-impl fmt::Display for Alu {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{}{}{}{}",
-            if self.flag_zero { "Z" } else { "-" },
-            if self.flag_substract { "S" } else { "-" },
-            if self.flag_halfcarry { "H" } else { "-" },
-            if self.flag_carry { "C" } else { "-" }
-        )
+impl Format for Alu {
+    fn format(&self, _fmt: defmt::Formatter) {
+        let t = intern!("{=char}{=char}{=char}{=char}");
+        defmt::export::istr(&t);
+        defmt::export::char(&if self.flag_zero { 'Z' } else { '-' });
+        defmt::export::char(&if self.flag_substract { 'S' } else { '-' });
+        defmt::export::char(&if self.flag_halfcarry { 'H' } else { '-' });
+        defmt::export::char(&if self.flag_carry { 'C' } else { '-' });
     }
 }
 

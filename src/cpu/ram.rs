@@ -1,5 +1,8 @@
 pub mod io;
-use cpu::*;
+use core::cell::RefCell;
+
+use crate::cpu::*;
+use defmt::{info, trace};
 
 pub static DMG: [u8; 0x100] = [
     0x31, 0xfe, 0xff, 0xaf, 0x21, 0xFF, 0x9F, 0x32, 0xCB, 0x7C, 0x20, 0xFB, 0x21, 0x26, 0xFF, 0x0E,
@@ -26,14 +29,13 @@ pub struct Ram {
     serial: io::Serial,
     dma: io::Dma,
     timer: io::Timer,
-    pub video: io::Video,
+    pub video: &'static RefCell<io::Video>,
     pub audio: io::Audio,
-
     pub ram: [u8; 0x2000],
     pub cart: cartridge::Cartridge,
-    pub rom: [u8; 0x4000],
-    pub romswitch: [u8; 0x4000],
-    pub ramswitch: [u8; 0x2000],
+    //    pub rom: [u8; 0x4000],
+    //    pub romswitch: [u8; 0x4000],
+    //    pub ramswitch: [u8; 0x2000],
     pub hram: [u8; 0x7f],
     oam: [u8; 0xa0],
     booting: bool,
@@ -42,7 +44,7 @@ pub struct Ram {
 }
 
 impl Ram {
-    pub fn origin(cart: cartridge::Cartridge) -> Ram {
+    pub fn origin(cart: cartridge::Cartridge, video: &'static RefCell<io::Video>) -> Ram {
         Ram {
             interrupt: io::InterruptManager::origin(),
 
@@ -50,14 +52,13 @@ impl Ram {
             serial: io::Serial::origin(),
             dma: io::Dma::origin(),
             timer: io::Timer::origin(),
-            video: io::Video::origin(),
+            video,
             audio: io::Audio::origin(),
 
             ram: [0; 0x2000],
             cart,
-            rom: [0; 0x4000],
-            romswitch: [0; 0x4000],
-            ramswitch: [0; 0x2000],
+
+            //            rom: [0; 0x4000],
             hram: [0; 0x7f],
             oam: [0; 0xa0],
             booting: true,
@@ -93,7 +94,7 @@ impl Ram {
       */
 
     pub fn read_io(&self, a: u16) -> u8 {
-        match a {
+        let v = match a {
             0x00 => self.joypad.read(),
             0x01 => self.serial.read_data(),
             0x02 => self.serial.read_control(),
@@ -106,26 +107,19 @@ impl Ram {
 
             //0x24 => self.audio.read_stereo_volume(),
             0x10..=0x3f => self.audio.read_register(a),
-            0x40 => self.video.read_control(),
-            0x41 => self.video.read_status(),
-            0x42 => self.video.read_scroll_y(),
-            0x43 => self.video.read_scroll_x(),
-            0x44 => self.video.read_line(),
-            0x45 => self.video.read_line_compare(),
+            0x40..=0x45 | 0x47..=0x4b => self.video.borrow().read_register(a),
+
             0x46 => self.dma.read(),
-            0x47 => self.video.read_background_palette(),
-            0x48 => self.video.read_sprite_palette_0(),
-            0x49 => self.video.read_sprite_palette_1(),
-            0x4a => self.video.read_window_scroll_y(),
-            0x4b => self.video.read_window_scroll_x(),
             _ => {
-                println!("reading from unimplemented io {:02x}", a);
+                trace!("reading from unimplemented io {:02x}", a);
                 0xff
             }
-        }
+        };
+        trace!("Reading {:02x} from io {:02x}", v, a);
+        v
     }
     pub fn write_io(&mut self, a: u16, v: u8) {
-        println!("write io {} {}",a,v );
+        trace!("write io {:04x} {:02x}", a, v);
         match a {
             0x00 => self.joypad.write(v),
             0x01 => self.serial.write_data(v),
@@ -138,20 +132,11 @@ impl Ram {
             0x0f => self.interrupt.write_interrupt_request(v),
 
             0x10..=0x3f => self.audio.write_register(a, v),
-            0x40 => self.video.write_control(v),
-            0x41 => self.video.write_status(v),
-            0x42 => self.video.write_scroll_y(v),
-            0x43 => self.video.write_scroll_x(v),
+            0x40..=0x43 | 0x45 | 0x47..=0x4b => self.video.borrow().write_register(a, v),
             // can not write to 0x44
-            0x45 => self.video.write_line_compare(v),
             0x46 => self.dma.write(v),
-            0x47 => self.video.write_background_palette(v),
-            0x48 => self.video.write_sprite_palette_0(v),
-            0x49 => self.video.write_sprite_palette_1(v),
-            0x4a => self.video.write_window_scroll_y(v),
-            0x4b => self.video.write_window_scroll_x(v),
 
-            _ => println!("writing {:02x} to unimplemented io {:02x}", v, a),
+            _ => trace!("writing {:02x} to unimplemented io {:02x}", v, a),
         }
     }
     pub fn read(&self, a: u16) -> u8 {
@@ -162,13 +147,13 @@ impl Ram {
                 if self.booting {
                     DMG[a as usize]
                 } else {
-                    self.cart.rom[a as usize]
+                    self.cart.fullrom[a as usize]
                 }
             }
             0x0000..=0x3fff =>
             //ROM #0
             {
-                self.cart.rom[(a % 0x4000) as usize]
+                self.cart.fullrom[(a % 0x4000) as usize]
             }
             0x4000..=0x7fff =>
             //ROM SWITCH
@@ -178,7 +163,7 @@ impl Ram {
             0x8000..=0x9fff =>
             //VRAM
             {
-                self.video.read_vram(a - 0x8000)
+                self.video.borrow().read_vram(a - 0x8000)
             }
             0xa000..=0xbfff =>
             //RAM SWITCH
@@ -198,6 +183,7 @@ impl Ram {
             0xfe00..=0xfe9f =>
             //OAM
             {
+                trace!("reading oam");
                 self.oam[(a - 0xfe00) as usize]
             }
             0xff00..=0xff4b =>
@@ -218,7 +204,7 @@ impl Ram {
             0xfea0..=0xfeff | 0xff4c..=0xff7f =>
             // empty, no IO
             {
-                println!("should not read there {:04x} ", a);
+                trace!("should not read there {:04x} ", a);
                 0xff
             }
         }
@@ -246,7 +232,7 @@ impl Ram {
             //VRAM
             {
                 //println!("write to vram ({:04x}) = {:02x}",a,v);
-                self.video.write_vram(a - 0x8000, v);
+                self.video.borrow().write_vram(a - 0x8000, v);
             }
             0xa000..=0xbfff =>
             //RAM SWITCH
@@ -266,7 +252,7 @@ impl Ram {
             0xfe00..=0xfe9f =>
             //OAM
             {
-                self.video.write_oam(a - 0xfe00, v)
+                self.video.borrow().write_oam(a - 0xfe00, v)
             }
             0xff00..=0xff4b =>
             //IO
@@ -281,7 +267,7 @@ impl Ram {
             0xffff =>
             // Interupt
             {
-                println!("write {:02x} to IR", v);
+                trace!("write {:02x} to IR", v);
                 self.interrupt.write_interrupt_enable(v);
             }
             0xff50 =>
@@ -295,7 +281,7 @@ impl Ram {
                 //println!("should not write there {:04x} {:02x}",a,v);
             }
         }
-        //println!("wrote {:02x}:{} at {:04x}",v,v as char,a);
+        trace!("wrote {:02x}:{} at {:04x}", v, v as char, a);
     }
     pub fn read8(&mut self, l: u8, h: u8) -> u8 {
         let a = u8tou16(l, h);

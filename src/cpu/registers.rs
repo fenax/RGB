@@ -1,4 +1,5 @@
-use std::fmt;
+use defmt::Format;
+use defmt::intern;
 
 pub struct Registers {
     pub a: u8,
@@ -12,13 +13,19 @@ pub struct Registers {
     pub pc: u16,
 }
 
-impl fmt::Display for Registers {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "A:{:02x} BC:{:02x}{:02x} DE:{:02x}{:02x} HL:{:02x}{:02x} SP:{:04x} PC:{:04x}",
-            self.a, self.b, self.c, self.d, self.e, self.h, self.l, self.sp, self.pc
-        )
+impl Format for Registers {
+    fn format(&self, _fmt: defmt::Formatter) {
+        let t = intern!("A:{:02x} BC:{:02x}{:02x} DE:{:02x}{:02x} HL:{:02x}{:02x} SP:{:04x} PC:{:04x}");
+        defmt::export::istr(&t);
+        defmt::export::u8( &self.a);
+        defmt::export::u8( &self.b);
+        defmt::export::u8( &self.c);
+        defmt::export::u8( &self.d);
+        defmt::export::u8( &self.e);
+        defmt::export::u8( &self.h);
+        defmt::export::u8( &self.l);
+        defmt::export::u16(&self.sp);
+        defmt::export::u16(&self.pc);
     }
 }
 

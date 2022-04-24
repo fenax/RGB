@@ -9,6 +9,8 @@ use self::cb::*;
 use self::ram::*;
 use self::registers::*;
 
+use defmt::info;
+
 pub fn u8tou16(l: u8, h: u8) -> u16 {
     ((h as u16) << 8) | (l as u16)
 }
@@ -1259,12 +1261,12 @@ pub fn instruct(ram: &mut Ram, reg: &mut Registers, alu: &mut Alu) -> CpuState {
 
         //STOP
         0x10 => {
-            println!("run unimplémented STOP");
+            info!("run unimplémented STOP");
             CpuState::Stop
         }
         //HALT
         0x76 => {
-            println!("run HALT");
+            info!("run HALT");
             CpuState::Halt
         }
 

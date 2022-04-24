@@ -1,6 +1,4 @@
-use std::fs::File;
-use std::fs::OpenOptions;
-use std::io::prelude::*;
+use defmt::info;
 
 #[derive(Debug)]
 pub enum Mbc {
@@ -31,13 +29,14 @@ pub struct Cartridge {
     pub has_timer: bool,
     pub has_rumble: bool,
     pub has_sensor: bool,
-    pub rom: [u8; 0x4000],
-    pub romswitch: Vec<[u8; 0x4000]>,
-    pub ramswitch: Vec<[u8; 0x2000]>,
+    //    pub rom: [u8; 0x4000],
+    //    pub romswitch: Vec<[u8; 0x4000]>,
+    pub fullrom: &'static [u8],
+    pub ramswitch: [[u8; 0x2000]; 1],
     pub cur_ram: usize,
     pub cur_rom: usize,
-    filename: String,
-    savefile: String,
+    //    filename: String,
+    //    savefile: String,
 }
 
 impl Default for Cartridge {
@@ -49,62 +48,22 @@ impl Default for Cartridge {
             has_timer: false,
             has_rumble: false,
             has_sensor: false,
-            rom: [0; 0x4000],
-            romswitch: Vec::new(),
-            ramswitch: Vec::new(),
+            //            rom: [0; 0x4000],
+            fullrom: include_bytes!(
+                "../../../Legend of Zelda, The - Link's Awakening (U) (V1.2) [!].gb"
+            ),
+            ramswitch: [[0; 0x2000]; 1],
             cur_ram: 0,
             cur_rom: 0,
-            filename: String::new(),
-            savefile: String::new(),
+            //            filename: String::new(),
+            //            savefile: String::new(),
         }
     }
 }
 impl Cartridge {
-    pub fn new(file: &str) -> Cartridge {
-        let mut c = Cartridge::default();
-        c.filename.push_str(file);
-        match c.filename.rfind('.') {
-            Some(i) => {
-                c.savefile.push_str(&c.filename[0..i]);
-            }
-            None => {
-                c.savefile.push_str(&c.filename);
-            }
-        }
-        c.savefile.push_str(".sav");
-
-        let mut f = match File::open(file) {
-            Ok(v) => v,
-            Err(e) => panic!("cant open file {} {:?}", file, e),
-        };
-        match f.read_exact(&mut c.rom) {
-            Ok(_) => {}
-            Err(e) => panic!("failed reading first part of rom{:?}", e),
-        }
-        for i in 1..c.get_rom_bank_count() {
-            let mut srom: [u8; 0x4000] = [0; 0x4000];
-            println!("Read Bank {}", i);
-            match f.read_exact(&mut srom) {
-                Ok(_) => {
-                    c.romswitch.push(srom);
-                }
-                Err(e) => panic!("Failed reading bank {} {:?}", i, e),
-            }
-        }
-        for _ in 0..c.get_ram_bank_count() {
-            let sram: [u8; 0x2000] = [0; 0x2000];
-            c.ramswitch.push(sram);
-        }
-        match File::open(&c.savefile) {
-            Ok(mut v) => {
-                for bank in &mut c.ramswitch {
-                    v.read_exact(bank).expect("failed to read save");
-                }
-            }
-            Err(e) => println!("failed to open save file {:?}", e),
-        }
-
-        match c.rom[0x147] {
+    pub fn setup(self) -> Cartridge {
+        let mut c = self;
+        match c.fullrom[0x147] {
             0x00 => {}
             0x01 => {
                 c.mbc = Mbc::Mbc1;
@@ -221,9 +180,9 @@ impl Cartridge {
         }
         c
     }
-
-    pub fn extract_title(&self) -> std::string::String {
-        let mut s = std::string::String::with_capacity(16);
+    /*
+    pub fn extract_title(&self) -> str {
+        let mut s = [char;16];
         for i in 0x134..=0x142 {
             if self.rom[i] == 0 {
                 return s;
@@ -232,28 +191,33 @@ impl Cartridge {
             }
         }
         s
-    }
+    }*/
     pub fn set_rom_bank(&mut self, b: u8) {
-        self.cur_rom = (std::cmp::max(b, 1) - 1) as usize;
+        self.cur_rom = (core::cmp::max(b, 1) - 1) as usize;
         //TODO suport bigger rom
     }
     pub fn read_romswitch(&self, a: u16) -> u8 {
         //println!("read from romswitch {} :{:02x}",self.cur_rom,a);
-        self.romswitch[self.cur_rom][a as usize]
+        self.fullrom[self.cur_rom * 0x4000 + a as usize]
     }
     pub fn read_ramswitch(&self, a: u16) -> u8 {
         self.ramswitch[self.cur_ram][a as usize]
     }
     pub fn write_ramswitch(&mut self, a: u16, v: u8) {
-        println!("write to ramswitch {:02x}:{:04x} = {:02x} {}", self.cur_ram,a,v,v as char );
-        if self.ramswitch.len() == 0{ return};
+        info!(
+            "write to ramswitch {:02x}:{:04x} = {:02x} {}",
+            self.cur_ram, a, v, v as char
+        );
+        if self.ramswitch.len() == 0 {
+            return;
+        };
         self.ramswitch[self.cur_ram][a as usize] = v;
     }
     pub fn is_cgb(&self) -> bool {
-        self.rom[0x143] == 0x80
+        self.fullrom[0x143] == 0x80
     }
     pub fn get_rom_bank_count(&self) -> u16 {
-        match self.rom[0x148] {
+        match self.fullrom[0x148] {
             0x00 => 2,
             0x01 => 4,
             0x02 => 8,
@@ -271,7 +235,7 @@ impl Cartridge {
     }
 
     pub fn get_ram_bank_count(&self) -> u16 {
-        match self.rom[0x149] {
+        match self.fullrom[0x149] {
             0x00 => 0,
             0x01 => 1,
             0x02 => 1,
@@ -283,47 +247,31 @@ impl Cartridge {
     }
 
     pub fn extract_info(&self) {
-        println!("{}", self.extract_title());
+        //info!("{}", self.extract_title());
         if self.is_cgb() {
-            println!("Is CGB");
+            info!("Is CGB");
         } else {
-            println!("In not CGB");
+            info!("In not CGB");
         }
-        println!("Old licensee code {:02x}", self.rom[0x14b]);
-        println!(
+        info!("Old licensee code {:02x}", self.fullrom[0x14b]);
+        info!(
             "New licensee code {:02x}{:02x}",
-            self.rom[0x144], self.rom[0x145]
+            self.fullrom[0x144], self.fullrom[0x145]
         );
-        println!(
+        /*info!(
             "Memory controller : {:?}, ram {}, battery {}, timer {}",
             self.mbc, self.has_ram, self.has_battery, self.has_timer
-        );
-        println!(
+        );*/
+        info!(
             "{} Kbytes of rom, {} banks of ram",
             self.get_rom_bank_count() as u32 * 16,
             self.get_ram_bank_count()
         );
-        if self.rom[0x14a] == 0 {
-            println!("Japanese game");
+        if self.fullrom[0x14a] == 0 {
+            info!("Japanese game");
         } else {
-            println!("Non Japanese game");
+            info!("Non Japanese game");
         }
-        println!("Game revision {}", self.rom[0x14c]);
-    }
-
-    pub fn save(&self) {
-        match OpenOptions::new()
-            .write(true)
-            .create(true)
-            .open(&self.savefile)
-        {
-            Ok(mut v) => {
-                for bank in &self.ramswitch {
-                    v.write_all(bank).expect("failed to write save");
-                }
-                println!("game saved into {}", &self.savefile);
-            }
-            Err(e) => panic!("failed to open save file {:?}", e),
-        }
+        info!("Game revision {}", self.fullrom[0x14c]);
     }
 }
