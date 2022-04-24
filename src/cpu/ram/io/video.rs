@@ -9,7 +9,7 @@ use rp_pico::hal::sio::Spinlock3 as RegLock;
 use rp_pico::hal::sio::Spinlock4 as OamLock;
 use rp_pico::hal::sio::Spinlock5 as VramLock;
 
-const VIDEO_DEBUG: bool = true;
+const VIDEO_DEBUG: bool = false;
 #[derive(Copy, Clone, Eq)]
 pub struct Sprite {
     pub y: u8,
@@ -138,9 +138,9 @@ pub struct VideoRegisters {
 
 impl VideoRegisters {
     pub fn write_control(&mut self, v: u8) {
-        if VIDEO_DEBUG {
-            info!("write lcd control {:02x}", v);
-        }
+        //if VIDEO_DEBUG {
+        info!("write lcd control {:02x}", v);
+        //}
         //let v = bit_split(v);
         self.enable_lcd = bit(v, 7);
         self.window_tile_map = bit(v, 6);
@@ -171,9 +171,9 @@ impl VideoRegisters {
     }
 
     pub fn write_status(&mut self, v: u8) {
-        if VIDEO_DEBUG {
-            info!("writing status {:x}", v);
-        }
+        //if VIDEO_DEBUG {
+        info!("writing status {:x}", v);
+        //}
         let v = bit_split(v);
         self.enable_ly_lcy_check = v[6];
         self.enable_mode_2_oam_check = v[5];

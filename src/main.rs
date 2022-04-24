@@ -176,7 +176,8 @@ impl Gameboy {
             if clock % 0x100000 == 0 {
                 let val = SYST::get_current() / 125;
                 info!(
-                    "RUNNNING FOR {} us or {} Mhz Sync is {} {}",
+                    "{:04x}RUNNNING FOR {} us or {} Mhz Sync is {} {}",
+                    self.reg.pc,
                     val * 10,
                     0x100000 as f32 / val as f32 * 10f32,
                     display_sync,
@@ -244,6 +245,7 @@ impl Gameboy {
                     || match Ipc::from_bits(fifo.read_blocking()) {
                         Ipc::DisplayOn => {
                             display_sync = true;
+                            cpu_sync = 0;
                             false
                         }
                         Ipc::DisplayOff => {
