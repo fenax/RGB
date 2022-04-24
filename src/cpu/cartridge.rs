@@ -49,9 +49,7 @@ impl Default for Cartridge {
             has_rumble: false,
             has_sensor: false,
             //            rom: [0; 0x4000],
-            fullrom: include_bytes!(
-                "../../../Legend of Zelda, The - Link's Awakening (U) (V1.2) [!].gb"
-            ),
+            fullrom: include_bytes!("../../../Mario.gb"),
             ramswitch: [[0; 0x2000]; 1],
             cur_ram: 0,
             cur_rom: 0,

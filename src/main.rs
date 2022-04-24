@@ -55,6 +55,30 @@ pub enum EmuKeys {
     Select,
 }
 
+pub union IpcUnion {
+    data: Ipc,
+    bits: u32,
+}
+#[derive(Clone, Copy)]
+pub enum Ipc {
+    Oam(bool),
+    Hblank(bool),
+    VBlank(bool),
+    LycCoincidence,
+    Key(u8),
+}
+
+impl Ipc {
+    fn get_bits(self) -> u32 {
+        let u = IpcUnion { data: self };
+        unsafe { u.bits }
+    }
+    fn from_bits(bits: u32) -> Ipc {
+        let u = IpcUnion { bits };
+        unsafe { u.data }
+    }
+}
+
 #[derive(Debug, Clone, Format)]
 pub enum EmuCommand {
     Quit,
