@@ -202,10 +202,10 @@ impl Cartridge {
         self.ramswitch[self.cur_ram][a as usize]
     }
     pub fn write_ramswitch(&mut self, a: u16, v: u8) {
-        info!(
+        /*info!(
             "write to ramswitch {:02x}:{:04x} = {:02x} {}",
             self.cur_ram, a, v, v as char
-        );
+        );*/
         if self.ramswitch.len() == 0 {
             return;
         };

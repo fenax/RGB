@@ -3,8 +3,8 @@ pub mod video;
 pub use self::audio::Audio;
 pub use self::video::Video;
 use crate::cpu::*;
-use defmt::info;
 use crate::EmuKeys;
+use defmt::info;
 
 pub fn bit(var: u8, bit: u8) -> bool {
     var & (1 << bit) != 0
@@ -245,14 +245,15 @@ pub struct Joypad {
     interrupt: bool,
     p14: bool,
     p15: bool,
-    up: bool,
+    data: u8,
+    /*up: bool,
     down: bool,
     right: bool,
     left: bool,
     a: bool,
     b: bool,
     start: bool,
-    select: bool,
+    select: bool,*/
 }
 
 impl Joypad {
@@ -261,15 +262,15 @@ impl Joypad {
             interrupt: false,
             p14: true,
             p15: true,
-
-            up: false,
+            data: 0,
+            /*up: false,
             down: false,
             right: false,
             left: false,
             a: false,
             b: false,
             start: false,
-            select: false,
+            select: false,*/
         }
     }
     /*           P14        P15
@@ -283,6 +284,7 @@ impl Joypad {
     P13-------O-Down-----O-Start
               |          |*/
     // TODO implément button interrupt
+    /*
     pub fn press_key(&mut self, k: EmuKeys) {
         info!("keypress {:?}", &k);
         self.interrupt = true;
@@ -297,7 +299,6 @@ impl Joypad {
             EmuKeys::Right => self.right = true,
         };
     }
-
     pub fn up_key(&mut self, k: EmuKeys) {
         match k {
             EmuKeys::A => self.a = false,
@@ -310,6 +311,13 @@ impl Joypad {
             EmuKeys::Right => self.right = false,
         };
     }
+    */
+    pub fn set(&mut self, k: u8) -> bool {
+        let ret = self.data == 0xFF && k != 0xFF;
+        self.data = k;
+        ret
+    }
+
     pub fn write(&mut self, v: u8) {
         self.p14 = (v & (1 << 4)) != 0;
         self.p15 = (v & (1 << 5)) != 0;
@@ -321,16 +329,18 @@ impl Joypad {
         r |= (self.p14 as u8) << 4;
         r |= (self.p15 as u8) << 5;
         if !self.p14 {
-            r |= (!self.right as u8) << 0;
+            /*r |= (!self.right as u8) << 0;
             r |= (!self.left as u8) << 1;
             r |= (!self.up as u8) << 2;
-            r |= (!self.down as u8) << 3;
+            r |= (!self.down as u8) << 3;*/
+            r |= self.data >> 4;
         }
         if !self.p15 {
-            r |= (!self.a as u8) << 0;
+            /*r |= (!self.a as u8) << 0;
             r |= (!self.b as u8) << 1;
             r |= (!self.select as u8) << 2;
-            r |= (!self.start as u8) << 3;
+            r |= (!self.start as u8) << 3;*/
+            r |= self.data & 0xF;
         }
         //        println!("reading buttons {:02x}",r);
         r

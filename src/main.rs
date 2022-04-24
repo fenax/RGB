@@ -61,6 +61,8 @@ pub union IpcUnion {
 }
 #[derive(Clone, Copy)]
 pub enum Ipc {
+    DisplayOn,
+    DisplayOff,
     Oam(bool),
     Hblank(bool),
     VBlank(bool),
@@ -69,6 +71,9 @@ pub enum Ipc {
 }
 
 impl Ipc {
+    fn send(self, fifo: &mut bsp::hal::sio::SioFifo) {
+        fifo.write_blocking(self.get_bits());
+    }
     fn get_bits(self) -> u32 {
         let u = IpcUnion { data: self };
         unsafe { u.bits }
@@ -120,7 +125,7 @@ impl Gameboy {
         }
     }
 
-    fn process_to_emu(&mut self, t: ToEmu) {
+    /*fn process_to_emu(&mut self, t: ToEmu) {
         info!("process KEYPRESS");
         match t {
             ToEmu::Tick => self.got_tick = true,
@@ -140,7 +145,7 @@ impl Gameboy {
             */
             _ => info!("{:?}", t),
         }
-    }
+    }*/
     /*
         fn try_read_all(&mut self, rx: &mut mpsc::Receiver<ToEmu>) {
             loop {
@@ -157,6 +162,8 @@ impl Gameboy {
         let mut cpu_wait = 0;
         let mut _buffer_index = 0;
         let mut halted = false;
+        let mut display_sync = false;
+        let mut cpu_sync: u32 = 0;
         syst.set_reload(0x00ffffff);
         syst.clear_current();
         syst.enable_counter();
@@ -166,12 +173,14 @@ impl Gameboy {
                 break;
             }
             clock = clock.wrapping_add(1);
-            if clock & 0xCFFF == 0 {
+            if clock % 0x100000 == 0 {
                 let val = SYST::get_current() / 125;
                 info!(
-                    "RUNNNING FOR {} us or {} Mhz",
-                    val,
-                    1_000_000.0 / val as f32
+                    "RUNNNING FOR {} us or {} Mhz Sync is {} {}",
+                    val * 10,
+                    0x100000 as f32 / val as f32 * 10f32,
+                    display_sync,
+                    cpu_sync
                 );
                 syst.clear_current();
             }
@@ -197,12 +206,12 @@ impl Gameboy {
             }
 
             //IO
-            let i_joypad = ram::io::Joypad::step(&mut self.ram, clock);
+            //let i_joypad = ram::io::Joypad::step(&mut self.ram, clock);
             let i_serial = ram::io::Serial::step(&mut self.ram, clock);
             let i_timer = ram::io::Timer::step(&mut self.ram, clock);
             let i_dma = ram::io::Dma::step(&mut self.ram, clock);
             //            let i_video = ram::io::Video::step(&mut self.ram, clock);
-            let i_video = {
+            /*             let i_video = {
                 if let Some(v) = fifo.read() {
                     let blank = v & 3;
                     (
@@ -220,25 +229,76 @@ impl Gameboy {
                 } else {
                     (cpu::ram::io::Interrupt::None, cpu::ram::io::Interrupt::None)
                 }
-            };
-            let i_audio = self.ram.audio.step(clock);
+            };*/
+            //let i_audio = self.ram.audio.step(clock);
             ram::io::InterruptManager::step(&mut self.ram, clock);
 
             let mut interrupted = false;
-            interrupted = interrupted || self.ram.interrupt.add_interrupt(&i_joypad);
+            //interrupted = interrupted || self.ram.interrupt.add_interrupt(&i_joypad);
             interrupted = interrupted || self.ram.interrupt.add_interrupt(&i_serial);
             interrupted = interrupted || self.ram.interrupt.add_interrupt(&i_timer);
             interrupted = interrupted || self.ram.interrupt.add_interrupt(&i_dma);
-            interrupted = interrupted || self.ram.interrupt.add_interrupt(&i_video.0);
-            interrupted = interrupted || self.ram.interrupt.add_interrupt(&i_video.1);
+            cpu_sync = cpu_sync.saturating_sub(1u32);
+            while fifo.is_read_ready() || (display_sync && cpu_sync == 0) {
+                interrupted = interrupted
+                    || match Ipc::from_bits(fifo.read_blocking()) {
+                        Ipc::DisplayOn => {
+                            display_sync = true;
+                            false
+                        }
+                        Ipc::DisplayOff => {
+                            display_sync = false;
+                            cpu_sync = 0;
+                            false
+                        }
+                        Ipc::Oam(inter) => {
+                            cpu_sync += (80 + 168) / 4;
+                            if inter {
+                                self.ram.interrupt.add_interrupt(&io::Interrupt::LcdcStatus)
+                            } else {
+                                false
+                            }
+                        }
+                        Ipc::Hblank(inter) => {
+                            cpu_sync += 208 / 4;
+                            if inter {
+                                self.ram.interrupt.add_interrupt(&io::Interrupt::LcdcStatus)
+                            } else {
+                                false
+                            }
+                        }
+                        Ipc::VBlank(inter) => {
+                            cpu_sync += 4560 / 4;
+                            if inter {
+                                self.ram.interrupt.add_interrupt(&io::Interrupt::VBlank)
+                            } else {
+                                false
+                            }
+                        }
+                        Ipc::LycCoincidence => {
+                            self.ram.interrupt.add_interrupt(&io::Interrupt::LcdcStatus)
+                        }
+                        Ipc::Key(keys) => {
+                            let inter = self.ram.joypad.set(keys);
+                            if inter {
+                                self.ram.interrupt.add_interrupt(&io::Interrupt::Joypad)
+                            } else {
+                                false
+                            }
+                        }
+                    }
+            }
+            //interrupted = interrupted || self.ram.interrupt.add_interrupt(&i_video.0);
+            //interrupted = interrupted || self.ram.interrupt.add_interrupt(&i_video.1);
             if interrupted {
                 halted = false;
             }
-            match i_audio {
+            /*match i_audio {
                 cpu::ram::io::Interrupt::AudioSample(l, r) => {}
                 _ => {}
-            };
-            match i_video.0 {
+            };*/
+
+            /*match i_video.0 {
                 cpu::ram::io::Interrupt::VBlank => {
                     info!("got VBLANK");
                     /*tx.send(ToDisplay::collect(&mut self.ram))
@@ -249,7 +309,7 @@ impl Gameboy {
                     //self.try_read_all(&mut rx);
                 }
                 _ => {}
-            };
+            };*/
         }
         info!("stopped at pc = {:04x}", self.reg.pc);
     }
@@ -375,7 +435,7 @@ fn display_loop() -> ! {
     unsafe {
         io::video::embedded_loop(
             ms,
-            sio.fifo,
+            &mut sio.fifo,
             &VIDEO,
             DISPLAY_start,
             DISPLAY_push_byte,

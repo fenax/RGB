@@ -1,4 +1,5 @@
 use crate::cpu::ram::io::*;
+use crate::Ipc;
 use core::cell::RefCell;
 use core::cmp::Ordering;
 use defmt::debug;
@@ -8,7 +9,7 @@ use rp_pico::hal::sio::Spinlock3 as RegLock;
 use rp_pico::hal::sio::Spinlock4 as OamLock;
 use rp_pico::hal::sio::Spinlock5 as VramLock;
 
-const VIDEO_DEBUG: bool = false;
+const VIDEO_DEBUG: bool = true;
 #[derive(Copy, Clone, Eq)]
 pub struct Sprite {
     pub y: u8,
@@ -1094,7 +1095,7 @@ impl PixelPipeline for WindowLineRenderer {
 
 pub fn embedded_loop(
     ms: u32,
-    fifo: SioFifo,
+    fifo: &mut SioFifo,
     video: &RefCell<Video>,
     start_display: fn(),
     push_display: fn(u8),
@@ -1104,28 +1105,43 @@ pub fn embedded_loop(
     let base_up = [0xf0, 0x80, 0x40, 0];
     //    let cp = unsafe{cortex_m::Peripherals::steal()};
     let video = video.borrow();
+    let mut display_started = false;
     loop {
         'screen: loop {
             //TODE send mode change interrupt
             //TODO send line interrupt
             //TODO send vblank
             //TODO set line registers
-            {
+            let enabled = {
                 let _spin3 = RegLock::claim();
                 let mut reg = video.reg.borrow_mut();
                 reg.video_mode = 1;
-                let en = reg.enable_lcd;
-                if !en {
-                    drop(_spin3);
-                    drop(reg);
-                    cortex_m::asm::delay(ms / 64);
-                    continue;
+                reg.enable_lcd
+            };
+
+            if !enabled {
+                if display_started {
+                    Ipc::DisplayOff.send(fifo);
+                    display_started = false;
+                }
+                cortex_m::asm::delay(ms / 64);
+                continue;
+            } else {
+                if !display_started {
+                    Ipc::DisplayOn.send(fifo);
+                    display_started = true;
                 }
             }
+
             start_display();
             'line: for l in 0..144 {
                 {
-                    let (background_palette_bits, sprite_palette_0_bits, sprite_palette_1_bits) = {
+                    let (
+                        background_palette_bits,
+                        sprite_palette_0_bits,
+                        sprite_palette_1_bits,
+                        mode2_interrupt,
+                    ) = {
                         let _spin3 = RegLock::claim();
                         let mut reg = video.reg.borrow_mut();
                         reg.video_mode = 2;
@@ -1134,14 +1150,17 @@ pub fn embedded_loop(
                             reg.background_palette_bits,
                             reg.sprite_palette_0_bits,
                             reg.sprite_palette_1_bits,
+                            reg.enable_mode_2_oam_check,
                         )
                     };
+                    Ipc::Oam(mode2_interrupt).send(fifo);
                     let _spin1 = OamLock::claim(); // mode 2
                     let oam = video.oam.borrow();
                     let mut sprites = SpriteRenderer::init(&oam, &video.reg, l);
                     {
                         let _spin3 = RegLock::claim();
-                        video.reg.borrow_mut().video_mode = 3;
+                        let mut v = video.reg.borrow_mut();
+                        v.video_mode = 3;
                     }
                     let _spin2 = VramLock::claim(); // mode 3
                     let vram = video.ram.borrow();
@@ -1191,20 +1210,28 @@ pub fn embedded_loop(
                     drop(_spin1);
                     drop(_spin2);
                 }
-                {
+                let interrupt_hblank = {
                     let _spin3 = RegLock::claim();
-                    video.reg.borrow_mut().video_mode = 0;
-                }
+                    let mut v = video.reg.borrow_mut();
+                    v.video_mode = 0;
+                    v.enable_mode_0_hblank_check
+                };
+                Ipc::Hblank(interrupt_hblank).send(fifo);
                 cortex_m::asm::delay(20 * ms / 1000);
                 // mode 0
             }
             end_display();
+
             for l in 144..153 {
-                {
+                let (interrupt_vblank, line) = {
                     let _spin3 = RegLock::claim();
                     let mut reg = video.reg.borrow_mut();
                     reg.video_mode = 1;
                     reg.line = l;
+                    (reg.enable_mode_1_vblank_check, (l == 144))
+                };
+                if line {
+                    Ipc::VBlank(interrupt_vblank).send(fifo);
                 }
                 cortex_m::asm::delay(ms / 10);
             }
