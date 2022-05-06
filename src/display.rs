@@ -1,7 +1,9 @@
-use cortex_m::prelude::_embedded_hal_blocking_spi_Write;
+use cortex_m::prelude::{_embedded_hal_blocking_spi_Write, _embedded_hal_spi_FullDuplex};
+use defmt::info;
 use embedded_hal::digital::v2::OutputPin;
 use embedded_hal::spi::MODE_0;
 use embedded_time::rate::Extensions;
+use nb::block;
 use rp_pico::hal::gpio::PinId;
 use rp_pico::hal::spi::*;
 use rp_pico::hal::Spi;
@@ -36,7 +38,7 @@ where
         rst: &mut RESETS,
     ) -> Self {
         Self {
-            spi: Spi::new(spi_device).init(rst, 125_000_000u32.Hz(), 64_500_000u32.Hz(), &MODE_0),
+            spi: Spi::new(spi_device).init(rst, 125_000_000u32.Hz(), 62_500_000u32.Hz(), &MODE_0),
             chip_select: cs,
             data_command: dc,
         }
@@ -79,11 +81,30 @@ where
     pub fn send_command(&mut self, reg: u8, data: &[u8]) {
         self.data_command.set_low().unwrap();
         self.chip_select.set_low().unwrap();
+        cortex_m::asm::delay(2);
         self.spi.write(&[reg]).unwrap();
         if !data.is_empty() {
             self.data_command.set_high().unwrap();
+            cortex_m::asm::delay(2);
+
             self.spi.write(data).unwrap();
         }
         self.chip_select.set_high().unwrap();
+    }
+
+    pub fn fill_buffer(&mut self, reg: u8, data: &[u8]) {
+        info!("buff {} {}", reg, data);
+        self.chip_select.set_high().unwrap();
+        self.data_command.set_low().unwrap();
+        self.chip_select.set_low().unwrap();
+        cortex_m::asm::delay(2);
+        self.spi.write(&[reg]).unwrap();
+        self.data_command.set_high().unwrap();
+        cortex_m::asm::delay(2);
+
+        for &d in data {
+            _ = self.spi.read();
+            block!(self.spi.send(d)).unwrap();
+        }
     }
 }

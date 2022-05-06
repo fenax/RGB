@@ -4,18 +4,16 @@
 #![no_std]
 #![no_main]
 
-use core::cell::RefCell;
+use core::{cell::RefCell, mem};
 use cortex_m::{
     peripheral::SYST,
     prelude::{_embedded_hal_blocking_spi_Write, _embedded_hal_spi_FullDuplex},
 };
 
 use cortex_m_rt::entry;
-use cortex_m_systick_countdown::{PollingSysTick, SysTickCalibration};
 use defmt::*;
 use defmt_rtt as _;
 use embedded_hal::digital::v2::{InputPin, OutputPin};
-use embedded_time::fixed_point::FixedPoint;
 use nb::block;
 use panic_probe as _;
 
@@ -25,7 +23,7 @@ use rp_pico as bsp;
 // use sparkfun_pro_micro_rp2040 as bsp;
 
 use bsp::hal::{
-    clocks::{init_clocks_and_plls, Clock},
+    clocks::init_clocks_and_plls,
     gpio::{pin::FunctionSpi, Floating, Input},
     multicore::{Multicore, Stack},
     pac,
@@ -35,6 +33,7 @@ use bsp::hal::{
 
 mod cpu;
 mod display;
+mod renderer;
 use cpu::{
     ram::io::{self, Video},
     *,
@@ -72,6 +71,9 @@ pub enum Ipc {
 
 impl Ipc {
     fn send(self, fifo: &mut bsp::hal::sio::SioFifo) {
+        while !fifo.is_write_ready() {
+            debug!("not ready for writing")
+        }
         fifo.write_blocking(self.get_bits());
     }
     fn get_bits(self) -> u32 {
@@ -112,52 +114,21 @@ struct Gameboy {
     reg: cpu::registers::Registers,
     alu: cpu::alu::Alu,
     running: bool,
-    got_tick: bool,
 }
+
 impl Gameboy {
     fn origin(cart: cpu::cartridge::Cartridge, video: &'static RefCell<io::Video>) -> Gameboy {
         Gameboy {
             ram: cpu::ram::Ram::origin(cart, video),
             reg: cpu::registers::Registers::origin(),
             alu: cpu::alu::Alu::origin(),
-            got_tick: false,
             running: true,
         }
     }
 
-    /*fn process_to_emu(&mut self, t: ToEmu) {
-        info!("process KEYPRESS");
-        match t {
-            ToEmu::Tick => self.got_tick = true,
-            ToEmu::KeyDown(k) => self.ram.joypad.press_key(k),
-            ToEmu::KeyUp(k) => self.ram.joypad.up_key(k),
-            ToEmu::Command(EmuCommand::Audio1(v)) => self.ram.audio.override_sound1 = v,
-            ToEmu::Command(EmuCommand::Audio2(v)) => self.ram.audio.override_sound2 = v,
-            ToEmu::Command(EmuCommand::Audio3(v)) => self.ram.audio.override_sound3 = v,
-            ToEmu::Command(EmuCommand::Audio4(v)) => self.ram.audio.override_sound4 = v,
-            /*     ToEmu::Command(EmuCommand::PrintAudio1) => info!("#### audio 1\n{:?}",self.ram.audio.square1),
-                ToEmu::Command(EmuCommand::PrintAudio2) => info!("#### audio 2\n{:?}",self.ram.audio.square2),
-                ToEmu::Command(EmuCommand::PrintAudio3) => info!("#### audio 3\n{:?}",self.ram.audio.wave3),
-                ToEmu::Command(EmuCommand::PrintAudio4) => info!("#### audio 4\n{:?}",self.ram.audio.noise4),
-                ToEmu::Command(EmuCommand::PrintVideo) => info!("#### video\n{:?}",self.ram.video),
-                ToEmu::Command(EmuCommand::Save) => self.ram.cart.save(),
-                ToEmu::Command(EmuCommand::Quit) => self.running = false,
-            */
-            _ => info!("{:?}", t),
-        }
-    }*/
-    /*
-        fn try_read_all(&mut self, rx: &mut mpsc::Receiver<ToEmu>) {
-            loop {
-                match rx.try_recv() {
-                    Ok(x) => self.process_to_emu(x),
-                    Err(_) => return,
-                }
-            }
-        }
-    */
     fn main_loop(&mut self, mut fifo: bsp::hal::sio::SioFifo, mut syst: SYST) {
         info!("MAIN CPU LOOP");
+        debug!("debug mode ON");
         let mut clock = 0 as u32;
         let mut cpu_wait = 0;
         let mut _buffer_index = 0;
@@ -165,26 +136,33 @@ impl Gameboy {
         let mut display_sync = false;
         let mut cpu_sync: u32 = 0;
         syst.set_reload(0x00ffffff);
+        syst.set_clock_source(cortex_m::peripheral::syst::SystClkSource::External);
         syst.clear_current();
         syst.enable_counter();
-
+        let mut instr = [0u16; 32];
         loop {
-            if self.running == false {
-                break;
-            }
+            //            if self.running == false {
+            //                break;
+            //            }
             clock = clock.wrapping_add(1);
             if clock % 0x100000 == 0 {
                 let val = SYST::get_current() / 125;
                 info!(
-                    "{:04x}RUNNNING FOR {} us or {} Mhz Sync is {} {}",
+                    "{:04x}RUNNNING FOR {} us or {} Mhz Sync is {} {} {}",
                     self.reg.pc,
                     val * 10,
-                    0x100000 as f32 / val as f32 * 10f32,
+                    1 as f32 / (val as f32 / 100000f32),
                     display_sync,
-                    cpu_sync
+                    cpu_sync,
+                    cpu_wait
                 );
                 syst.clear_current();
             }
+            /*instr[clock as usize % 32] = self.reg.pc;
+            if self.reg.pc == 0x97 {
+                defmt::panic!("instruction 97 with previous {} - {:x} ", clock % 16, instr);
+            }*/
+
             if !halted {
                 if cpu_wait == 0 {
                     //print!("\n{:05x}{}{} ",clock,self.alu,self.reg);
@@ -193,6 +171,7 @@ impl Gameboy {
                             CpuState::None => {}
                             CpuState::Wait(t) => cpu_wait = t,
                             CpuState::Halt => {
+                                debug!("halted at {:x}", self.reg.pc);
                                 halted = true;
                             }
                             CpuState::Stop => {
@@ -207,92 +186,75 @@ impl Gameboy {
             }
 
             //IO
-            //let i_joypad = ram::io::Joypad::step(&mut self.ram, clock);
-            let i_serial = ram::io::Serial::step(&mut self.ram, clock);
-            let i_timer = ram::io::Timer::step(&mut self.ram, clock);
-            let i_dma = ram::io::Dma::step(&mut self.ram, clock);
-            //            let i_video = ram::io::Video::step(&mut self.ram, clock);
-            /*             let i_video = {
-                if let Some(v) = fifo.read() {
-                    let blank = v & 3;
-                    (
-                        match blank {
-                            1 => cpu::ram::io::Interrupt::VBlank,
-                            2 => cpu::ram::io::Interrupt::VBlankEnd,
-                            _ => cpu::ram::io::Interrupt::None,
-                        },
-                        if v & 4 != 0 {
-                            cpu::ram::io::Interrupt::LcdcStatus
-                        } else {
-                            cpu::ram::io::Interrupt::None
-                        },
-                    )
-                } else {
-                    (cpu::ram::io::Interrupt::None, cpu::ram::io::Interrupt::None)
-                }
-            };*/
-            //let i_audio = self.ram.audio.step(clock);
-            ram::io::InterruptManager::step(&mut self.ram, clock);
-
             let mut interrupted = false;
+            ram::io::InterruptManager::step(&mut self.ram, clock);
+            if clock & 0b11 == 0 {
+                let i_serial = ram::io::Serial::step(&mut self.ram, clock);
+                let i_timer = ram::io::Timer::step(&mut self.ram, clock);
+                interrupted = self.ram.interrupt.add_interrupt(&i_serial) || interrupted;
+                interrupted = self.ram.interrupt.add_interrupt(&i_timer) || interrupted;
+            }
+            let i_dma = ram::io::Dma::step(&mut self.ram, clock);
+            //let i_audio = self.ram.audio.step(clock);
+
+            //let i_joypad = ram::io::Joypad::step(&mut self.ram, clock);
             //interrupted = interrupted || self.ram.interrupt.add_interrupt(&i_joypad);
-            interrupted = interrupted || self.ram.interrupt.add_interrupt(&i_serial);
-            interrupted = interrupted || self.ram.interrupt.add_interrupt(&i_timer);
-            interrupted = interrupted || self.ram.interrupt.add_interrupt(&i_dma);
+
+            interrupted = self.ram.interrupt.add_interrupt(&i_dma) || interrupted;
+
             cpu_sync = cpu_sync.saturating_sub(1u32);
             while fifo.is_read_ready() || (display_sync && cpu_sync == 0) {
-                interrupted = interrupted
-                    || match Ipc::from_bits(fifo.read_blocking()) {
-                        Ipc::DisplayOn => {
-                            display_sync = true;
-                            cpu_sync = 0;
-                            false
-                        }
-                        Ipc::DisplayOff => {
-                            display_sync = false;
-                            cpu_sync = 0;
-                            false
-                        }
-                        Ipc::Oam(inter) => {
-                            cpu_sync += (80 + 168) / 4;
-                            if inter {
-                                self.ram.interrupt.add_interrupt(&io::Interrupt::LcdcStatus)
-                            } else {
-                                false
-                            }
-                        }
-                        Ipc::Hblank(inter) => {
-                            cpu_sync += 208 / 4;
-                            if inter {
-                                self.ram.interrupt.add_interrupt(&io::Interrupt::LcdcStatus)
-                            } else {
-                                false
-                            }
-                        }
-                        Ipc::VBlank(inter) => {
-                            cpu_sync += 4560 / 4;
-                            if inter {
-                                self.ram.interrupt.add_interrupt(&io::Interrupt::VBlank)
-                            } else {
-                                false
-                            }
-                        }
-                        Ipc::LycCoincidence => {
+                interrupted = match Ipc::from_bits(fifo.read_blocking()) {
+                    Ipc::DisplayOn => {
+                        display_sync = true;
+                        cpu_sync = 0;
+                        false
+                    }
+                    Ipc::DisplayOff => {
+                        display_sync = false;
+                        cpu_sync = 0;
+                        false
+                    }
+                    Ipc::Oam(inter) => {
+                        cpu_sync += (80 + 168) / 4;
+                        if inter {
                             self.ram.interrupt.add_interrupt(&io::Interrupt::LcdcStatus)
-                        }
-                        Ipc::Key(keys) => {
-                            let inter = self.ram.joypad.set(keys);
-                            if inter {
-                                self.ram.interrupt.add_interrupt(&io::Interrupt::Joypad)
-                            } else {
-                                false
-                            }
+                        } else {
+                            false
                         }
                     }
+                    Ipc::Hblank(inter) => {
+                        cpu_sync += 208 / 4;
+                        if inter {
+                            self.ram.interrupt.add_interrupt(&io::Interrupt::LcdcStatus)
+                        } else {
+                            false
+                        }
+                    }
+                    Ipc::VBlank(inter) => {
+                        cpu_sync += 4560 / 4;
+                        if inter {
+                            self.ram.interrupt.add_interrupt(&io::Interrupt::VBlank)
+                        } else {
+                            false
+                        }
+                    }
+                    Ipc::LycCoincidence => {
+                        self.ram.interrupt.add_interrupt(&io::Interrupt::LcdcStatus)
+                    }
+                    Ipc::Key(keys) => {
+                        let inter = self.ram.joypad.set(keys);
+                        if inter {
+                            self.ram.interrupt.add_interrupt(&io::Interrupt::Joypad)
+                        } else {
+                            false
+                        }
+                    }
+                } || interrupted;
             }
-            //interrupted = interrupted || self.ram.interrupt.add_interrupt(&i_video.0);
-            //interrupted = interrupted || self.ram.interrupt.add_interrupt(&i_video.1);
+
             if interrupted {
+                info!("Interrupted");
                 halted = false;
             }
             /*match i_audio {
@@ -327,7 +289,7 @@ static mut LCD_TE: Option<bsp::hal::gpio::Pin<bsp::hal::gpio::bank0::Gpio21, Inp
 
 static mut GB: Option<Gameboy> = None;
 
-fn DISPLAY_start() {
+fn display_start() {
     let lcd_te = unsafe { LCD_TE.as_ref().expect("lcd_te not initialized") };
     let mut display = unsafe { DISPLAY.as_mut().expect("display not initialized") };
     while lcd_te.is_low().unwrap() {}
@@ -342,19 +304,112 @@ fn DISPLAY_start() {
     display.data_command.set_high().unwrap();
 }
 
-fn DISPLAY_push_byte(b: u8) {
+fn display_wait_sync() {
+    let lcd_te = unsafe { LCD_TE.as_ref().expect("lcd_te not initialized") };
+    //let mut display = unsafe { DISPLAY.as_mut().expect("display not initialized") };
+    while lcd_te.is_low().unwrap() {}
+}
+
+fn display_four_pixels(l: u8, column: u8, data: [u8; 6]) {
+    //let lcd_te = unsafe { LCD_TE.as_ref().expect("lcd_te not initialized") };
     let mut display = unsafe { DISPLAY.as_mut().expect("display not initialized") };
+
+    while unsafe { pac::SPI0::PTR.cast::<u8>().offset(0xc).read() } & (1 << 4) != 0 {}
+    //cortex_m::asm::delay(8 * 8 * 2 * 2); //8 level buffer, 8 bits, 2 cpu clocks per bit, 2 to be sure;
+
+    //info!("display line {}", l);
+    //    display.send_command(0x2A, &[0x00, 80 + column, 0x00, 80 + 160 - 1]);
+    //    display.send_command(0x2B, &[0x00, 40 + l, 0x00, 40 + l]);
+    //display.send_command(0x36, &[0x70]);
+    //display.send_command(0x3A, &[0x03]);
+    display.fill_buffer(0x3C, &data);
+}
+
+fn display_start_line(l: u8, flags: [u8; 4], line: &[u8; 160]) {
+    //let lcd_te = unsafe { LCD_TE.as_ref().expect("lcd_te not initialized") };
+    let mut display = unsafe { DISPLAY.as_mut().expect("display not initialized") };
+
+    //while unsafe { pac::SPI0::PTR.cast::<u8>().offset(0xc).read() } & (1 << 4) != 0 {}
+    //cortex_m::asm::delay(8 * 8 * 2 * 2); //8 level buffer, 8 bits, 2 cpu clocks per bit, 2 to be sure;
+
+    //info!("display line {}", l);
+    if l == 0 {
+        display.send_command(0x2A, &[0x00, 80, 0x00, 80 + 160 - 1]);
+        display.send_command(0x2B, &[0x00, 40, 0x00, 40 + 144 - 1]);
+        //display.send_command(0x36, &[0x70]);
+        //display.send_command(0x3A, &[0x03]);
+        display.send_command(0x36, &[0x70]);
+        display.send_command(0x3A, &[0x03]);
+        cortex_m::asm::delay(8 * 8 * 2 * 2); //8 level buffer, 8 bits, 2 cpu clocks per bit, 2 to be sure;
+
+        display.data_command.set_low().unwrap();
+        display.chip_select.set_low().unwrap();
+        display.spi.write(&[0x2C]).unwrap();
+        display.data_command.set_high().unwrap();
+    } else {
+        display.data_command.set_low().unwrap();
+        display.chip_select.set_low().unwrap();
+        display.spi.write(&[0x3C]).unwrap();
+        display.data_command.set_high().unwrap();
+    }
+    //display.fill_buffer(0x2C, &[flags[0], 0, flags[1], flags[2], 0, flags[3]]);
+    for i in (0..160).step_by(2) {
+        let a = (line[i] << 4) + line[i];
+        _ = display.spi.read();
+        block!(display.spi.send(a)).unwrap();
+
+        let b = (line[i] << 4) + line[i + 1];
+        _ = display.spi.read();
+        block!(display.spi.send(b)).unwrap();
+
+        let c = (line[i + 1] << 4) + line[i + 1];
+        _ = display.spi.read();
+        block!(display.spi.send(c)).unwrap();
+    }
+    cortex_m::asm::delay(8 * 8 * 2); //8 level buffer, 8 bits, 2 cpu clocks per bit, 2 to be sure;
+    for _ in 0..8 {
+        _ = display.spi.read();
+    }
+
+    //while unsafe { pac::SPI0::PTR.cast::<u8>().offset(0xc).read() } & (1 << 4) != 0 {}
+    display.chip_select.set_high().unwrap();
+    /*display.data_command.set_low().unwrap();
+    display.chip_select.set_low().unwrap();
+    cortex_m::asm::delay(2); //8 level buffer, 8 bits, 2 cpu clocks per bit, 2 to be sure;
+    display.spi.write(&[0x2C]).unwrap();
+    display.data_command.set_high().unwrap();
+
     display.spi.read();
-    block!(display.spi.send(b)).unwrap();
+    block!(display.spi.send(flags[0])).unwrap();
+    display.spi.read();
+    block!(display.spi.send(0)).unwrap();
+    display.spi.read();
+    block!(display.spi.send(flags[1])).unwrap();
+    display.spi.read();
+    block!(display.spi.send(flags[2])).unwrap();
+    display.spi.read();
+    block!(display.spi.send(0)).unwrap();
+    display.spi.read();
+    block!(display.spi.send(flags[3])).unwrap();*/
 }
 
-fn DISPLAY_end() {
+fn display_push_byte(b: u8) {
     let mut display = unsafe { DISPLAY.as_mut().expect("display not initialized") };
-    cortex_m::asm::delay(8 * 8 * 2 * 2); //8 level buffer, 8 bits, 2 cpu clocks per bit, 2 to be sure;
-    display.chip_select.set_high();
+    _ = display.spi.read();
+    block!(display.spi.send(b)).unwrap();
+    //display.spi.write(&[b]).unwrap();
 }
 
-fn DISPLAY_fill(a: u8, b: u8) {
+fn display_end() {
+    let mut display = unsafe { DISPLAY.as_mut().expect("display not initialized") };
+    while unsafe { pac::SPI0::PTR.cast::<u8>().offset(0xc).read() } & (1 << 4) != 0 {
+        _ = display.spi.read();
+    }
+
+    display.chip_select.set_high().unwrap();
+}
+
+fn display_fill(a: u8, b: u8) {
     let lcd_te = unsafe { LCD_TE.as_ref().expect("lcd_te not initialized") };
     let mut display = unsafe { DISPLAY.as_mut().expect("display not initialized") };
     while lcd_te.is_low().unwrap() {}
@@ -372,9 +427,9 @@ fn DISPLAY_fill(a: u8, b: u8) {
     display.spi.write(&[0x2C]).unwrap();
     display.data_command.set_high().unwrap();
     for _ in 0..240 * 320 {
-        display.spi.read();
+        _ = display.spi.read();
         block!(display.spi.send(a)).unwrap();
-        display.spi.read();
+        _ = display.spi.read();
         block!(display.spi.send(b)).unwrap();
     }
     cortex_m::asm::delay(8 * 8 * 2 * 2); //8 level buffer, 8 bits, 2 cpu clocks per bit, 2 to be sure;
@@ -431,21 +486,62 @@ fn display_loop() -> ! {
     }
     cortex_m::asm::delay(500 * ms);
     //let mut screen = [0u8; 240 * 320 * 2];
-    DISPLAY_fill(0xf8, 0x00);
+    display_fill(0xf8, 0x00);
     //display.send_command(0x2C, &screen);
     sio.fifo.write_blocking(0);
     unsafe {
-        io::video::embedded_loop(
+        renderer::embedded_loop(
             ms,
             &mut sio.fifo,
             &VIDEO,
-            DISPLAY_start,
-            DISPLAY_push_byte,
-            DISPLAY_end,
+            display_wait_sync,
+            display_start_line,
+            display_four_pixels,
+            display_push_byte,
+            display_end,
         );
     };
     loop {}
 }
+
+#[rustfmt::skip]
+static ALPHA :[u8;32] = [
+    0b00000000,
+    0b00011100,
+    0b00111110,
+    0b00100110,
+    0b00100110,
+    0b00111110,
+    0b00100110,
+    0b00100110,
+
+    0b11111111,
+    0b10000011,
+    0b10011001,
+    0b10011001,
+    0b10000011,
+    0b10011001,
+    0b10011001,
+    0b10000011,   
+    
+    0b11111111,
+    0b11111111,
+    0b11000011,
+    0b11011011,
+    0b11011011,
+    0b11000011,
+    0b11111111,
+    0b11111111,
+
+    0b00000000,
+    0b00000000,
+    0b00111100,
+    0b00100100,
+    0b00100100,
+    0b00111100,
+    0b00000000,
+    0b00000000,
+];
 
 #[entry]
 fn main() -> ! {
@@ -483,8 +579,51 @@ fn main() -> ! {
 
     let cart = cpu::cartridge::Cartridge::default().setup();
     cart.extract_info();
-
+    info!(
+        "cart at {:x} with size {}",
+        (&cart) as *const cpu::cartridge::Cartridge,
+        mem::size_of::<cpu::cartridge::Cartridge>()
+    );
+    info!(
+        "VIDEO at {:x} with size {}",
+        unsafe { (VIDEO.as_ptr()) },
+        mem::size_of::<Video>()
+    );
+    info!("Stack at {:x}", unsafe {
+        (&CORE1_STACK) as *const Stack<4096>
+    });
+    /*
+    let vid = unsafe { VIDEO.borrow() };
+    vid.with_ram(|mut ram| {
+        let size = ram.vram.len();
+        for (i, v) in ALPHA.iter().enumerate() {
+            ram.vram[i * 2] = *v;
+            ram.vram[i * 2 + 1] = *v;
+        }
+        for i in (ALPHA.len() * 2)..0x1800 {
+            ram.vram[i] = 0x55;
+        }
+        for i in (0x1800..0x2000).step_by(4) {
+            ram.vram[i] = 0;
+            ram.vram[i + 1] = 1;
+            ram.vram[i + 2] = 2;
+            ram.vram[i + 3] = 3;
+        }
+    });
+    vid.with_reg(|mut reg| {
+        reg.enable_lcd = true;
+        reg.enable_background = true;
+        reg.tile_set = true;
+        reg.background_tile_map = false;
+        reg.write_background_palette(0b11100100);
+    });
+    drop(vid);*/
     let mut gb = Gameboy::origin(cart, unsafe { &VIDEO });
+    info!(
+        "gb at {:x} with size {}",
+        (&gb) as *const Gameboy,
+        mem::size_of::<Gameboy>()
+    );
     unsafe {
         GB = Some(gb);
     }
@@ -499,8 +638,16 @@ fn main() -> ! {
     _ = sio.fifo.read_blocking();
     //info!("unblocked");
     let mut gb = unsafe { GB.as_mut().expect("GB is not initialized") };
+
+    watchdog.enable_tick_generation(bsp::XOSC_CRYSTAL_FREQ as u8);
     gb.main_loop(sio.fifo, core.SYST);
-    loop {}
+    loop {
+        //sio.fifo.read();
+    }
     //    let _thread = core1.spawn(emulator_loop, unsafe { &mut CORE1_STACK.mem });
     //    display_loop();
 }
+/*
+#[interrupt]
+fn SPI0_IRQ() {}
+*/

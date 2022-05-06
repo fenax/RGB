@@ -5,6 +5,7 @@ pub use self::video::Video;
 use crate::cpu::*;
 use crate::EmuKeys;
 use defmt::info;
+use defmt::Format;
 
 pub fn bit(var: u8, bit: u8) -> bool {
     var & (1 << bit) != 0
@@ -65,16 +66,16 @@ pub fn bit_merge(
     r
 }
 
-#[derive(Debug)]
+#[derive(Debug, Format)]
 pub enum Interrupt {
     None,
-    VBlankEnd,
+    //VBlankEnd,
     VBlank,
     LcdcStatus,
     TimerOverflow,
     SerialTransfer,
     Joypad,
-    AudioSample(f32, f32),
+    //AudioSample(f32, f32),
 }
 
 pub struct InterruptManager {
@@ -116,6 +117,7 @@ impl InterruptManager {
         }
     }
 
+    #[inline]
     pub fn step(ram: &mut ram::Ram, _clock: u32) -> Interrupt {
         if ram.interrupt.order_disable {
             ram.interrupt.order_disable = false;
@@ -128,7 +130,12 @@ impl InterruptManager {
         Interrupt::None
     }
 
+    #[inline]
     pub fn add_interrupt(&mut self, i: &Interrupt) -> bool {
+        if let Interrupt::None = i {
+        } else {
+            info!("interrupted by {}", i);
+        }
         match i {
             Interrupt::VBlank => self.request_vblank = true,
             Interrupt::LcdcStatus => self.request_lcd_stat = true,
@@ -390,23 +397,23 @@ impl Serial {
         r |= (self.start as u8) << 7;
         r
     }
+    #[inline]
     pub fn step(ram: &mut Ram, clock: u32) -> Interrupt {
         if ram.serial.started {
             if clock == ram.serial.stoptime {
+                info!("Serial {:02x} {}", ram.serial.data, ram.serial.data as char);
                 ram.serial.start = false;
                 ram.serial.started = false;
                 ram.serial.data = 0xff;
-                Interrupt::SerialTransfer
-            } else {
-                Interrupt::None
+                return Interrupt::SerialTransfer;
             }
         } else {
             if ram.serial.start {
                 ram.serial.started = true;
-                ram.serial.stoptime = clock + 1024;
+                ram.serial.stoptime = clock.wrapping_add(1024);
             }
-            Interrupt::None
         }
+        Interrupt::None
     }
 }
 
@@ -431,6 +438,7 @@ impl Dma {
     pub fn read(&self) -> u8 {
         self.address
     }
+    #[inline]
     pub fn step(ram: &mut Ram, _clock: u32) -> Interrupt {
         if ram.dma.started {
             let tmp = ram.read8(ram.dma.index, ram.dma.address);
@@ -497,6 +505,7 @@ impl Timer {
     pub fn read_control(&self) -> u8 {
         self.div_sel | ((self.start as u8) << 2)
     }
+    #[inline]
     pub fn step(ram: &mut Ram, clock: u32) -> Interrupt {
         if clock & 63 == 0 {
             ram.timer.div = ram.timer.div.wrapping_add(1);
@@ -510,7 +519,7 @@ impl Timer {
                     3 => 63,
                     _ => panic!(),
                 })
-                == 2
+                == 0
         {
             let (r, o) = ram.timer.tima.overflowing_add(1);
             //            println!("clock tick {} {}",r,o);

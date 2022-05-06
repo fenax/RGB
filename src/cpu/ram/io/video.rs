@@ -1,10 +1,8 @@
 use crate::cpu::ram::io::*;
-use crate::Ipc;
 use core::cell::RefCell;
+use core::cell::RefMut;
 use core::cmp::Ordering;
 use defmt::debug;
-use rp_pico::hal::sio::SioFifo;
-use rp_pico::hal::sio::Spinlock;
 use rp_pico::hal::sio::Spinlock3 as RegLock;
 use rp_pico::hal::sio::Spinlock4 as OamLock;
 use rp_pico::hal::sio::Spinlock5 as VramLock;
@@ -15,10 +13,10 @@ pub struct Sprite {
     pub y: u8,
     pub x: u8,
     pub tile: u8,
-    behind_bg: bool,
-    y_flip: bool,
-    x_flip: bool,
-    palette: bool,
+    pub behind_bg: bool,
+    pub y_flip: bool,
+    pub x_flip: bool,
+    pub palette: bool,
     //vrambank CGB
     //palette CGB
 }
@@ -77,19 +75,6 @@ impl Sprite {
     }
 }
 
-#[derive(Clone, Copy)]
-pub struct Pixel {
-    behind_bg: bool,
-    palette: bool,
-    color: u8,
-}
-
-#[derive(Clone, Copy)]
-pub struct WindowPixel {
-    transparent: bool,
-    color: u8,
-}
-
 pub struct VideoRam {
     pub vram: [u8; 0x2000],
     //tiles: [[u16; 8]; 0x180],
@@ -100,40 +85,40 @@ pub struct VideoRam {
 }
 
 pub struct VideoRegisters {
-    line: u8,
+    pub line: u8,
     //    window_line: u8,
-    video_mode: u8,
+    pub video_mode: u8,
 
-    enable_lcd: bool,
-    window_tile_map: bool, //(0=9800h-9BFFh, 1=9C00h-9FFFh)
-    enable_window: bool,
-    pub tile_set: bool,        //(0=8800h-97FFh, 1=8000h-8FFFh)
-    background_tile_map: bool, //(0=9800h-9BFFh, 1=9C00h-9FFFh)
-    sprite_size: bool,         // 0 small, 1 big
-    enable_sprites: bool,
-    enable_background: bool,
+    pub enable_lcd: bool,
+    pub window_tile_map: bool, //(0=9800h-9BFFh, 1=9C00h-9FFFh)
+    pub enable_window: bool,
+    pub tile_set: bool,            //(0=8800h-97FFh, 1=8000h-8FFFh)
+    pub background_tile_map: bool, //(0=9800h-9BFFh, 1=9C00h-9FFFh)
+    pub sprite_size: bool,         // 0 small, 1 big
+    pub enable_sprites: bool,
+    pub enable_background: bool,
 
-    enable_ly_lcy_check: bool,
-    enable_mode_2_oam_check: bool,
-    enable_mode_1_vblank_check: bool,
-    enable_mode_0_hblank_check: bool,
-    signal_ly_lcy_comparison: bool,
+    pub enable_ly_lcy_check: bool,
+    pub enable_mode_2_oam_check: bool,
+    pub enable_mode_1_vblank_check: bool,
+    pub enable_mode_0_hblank_check: bool,
+    pub signal_ly_lcy_comparison: bool,
 
-    line_compare: u8,
+    pub line_compare: u8,
 
-    scroll_x: u8,
-    scroll_y: u8,
+    pub scroll_x: u8,
+    pub scroll_y: u8,
 
-    background_palette_bits: u8,
-    background_palette: [u8; 4],
+    pub background_palette_bits: u8,
+    pub background_palette: [u8; 4],
 
-    sprite_palette_0_bits: u8,
-    sprite_palette_1_bits: u8,
-    sprite_palette_0: [u8; 3],
-    sprite_palette_1: [u8; 3],
+    pub sprite_palette_0_bits: u8,
+    pub sprite_palette_1_bits: u8,
+    pub sprite_palette_0: [u8; 3],
+    pub sprite_palette_1: [u8; 3],
 
-    window_scroll_x: u8,
-    window_scroll_y: u8,
+    pub window_scroll_x: u8,
+    pub window_scroll_y: u8,
 }
 
 impl VideoRegisters {
@@ -310,7 +295,7 @@ impl VideoRam {
         let tile = tile as usize;
         let line = line as usize;
         let base =
-            (if tile_set { tile } else { (tile ^ 0x80) + 128 } * 16) as usize + (line as usize * 8);
+            (if tile_set { tile } else { (tile ^ 0x80) + 128 } * 16) as usize + (line as usize * 2);
         (self.vram[base], self.vram[base + 1])
     }
     pub fn clear_update(&mut self) {
@@ -378,7 +363,34 @@ impl Video {
             }),
         }
     }
-
+    pub(crate) fn try_get_oam(&self) -> Option<(RefMut<'_, [Sprite; 40]>, OamLock)> {
+        OamLock::try_claim().map(|x| (self.oam.borrow_mut(), x))
+    }
+    pub(crate) fn with_oam<R>(&self, f: impl FnOnce(RefMut<'_, [Sprite; 40]>) -> R) -> R {
+        let lock = OamLock::claim();
+        let ret = f(self.oam.borrow_mut());
+        drop(lock);
+        ret
+    }
+    /*pub(crate) fn get_reg(&self) -> (RefMut<'_, VideoRegisters>, RegLock) {
+        let lock = RegLock::claim();
+        (self.reg.borrow_mut(), lock)
+    }*/
+    pub(crate) fn with_reg<R>(&self, f: impl FnOnce(RefMut<'_, VideoRegisters>) -> R) -> R {
+        let lock = RegLock::claim();
+        let ret = f(self.reg.borrow_mut());
+        drop(lock);
+        ret
+    }
+    pub(crate) fn try_get_ram(&self) -> Option<(RefMut<'_, VideoRam>, VramLock)> {
+        VramLock::try_claim().map(|x| (self.ram.borrow_mut(), x))
+    }
+    pub(crate) fn with_ram<R>(&self, f: impl FnOnce(RefMut<'_, VideoRam>) -> R) -> R {
+        let lock = VramLock::claim();
+        let ret = f(self.ram.borrow_mut());
+        drop(lock);
+        ret
+    }
     /*
        fn draw_window(&mut self) -> [WindowPixel; 160] {
            let mut out_line = [WindowPixel {
@@ -676,71 +688,42 @@ impl Video {
     */
 
     pub fn write_oam(&self, a: u16, v: u8) {
-        if let Some(_spin) = OamLock::try_claim() {
+        self.try_get_oam().map_or_else(
+            || debug!("##########################Tried to write to oam in mode2 or mode3"),
+            |(mut oam, _x)| oam[(a >> 2) as usize].write(a & 0x3, v),
+        )
+
+        /*if let Some(_spin) = OamLock::try_claim() {
             //OamLock::try_claim() {
             let mut oam = self.oam.borrow_mut();
             oam[(a >> 2) as usize].write(a & 0x3, v);
         } else {
             debug!("##########################Tried to write to oam in mode2 or mode3");
-        }
+        }*/
     }
     pub fn write_vram(&self, a: u16, v: u8) {
-        if let Some(_spin) = VramLock::try_claim() {
-            let mut vram = self.ram.borrow_mut();
-            /*             match a {
-                0..=0x17ff => {
-                    vram.updated_tiles = true;
-                    let a = a as usize;
-                    if a & 1 == 0 {
-                        //low bits
-                        let bits = bit_split(v);
-                        for i in 0..8 {
-                            vram.tiles[a / 16][a % 16 * 4 + i] = if bits[7 - i] {
-                                vram.tiles[a / 16][a % 16 * 4 + i] | 1
-                            } else {
-                                vram.tiles[a / 16][a % 16 * 4 + i] & !1
-                            };
-                        }
-                    } else {
-                        //high bits
-                        let a = a - 1;
-                        let bits = bit_split(v);
-                        for i in 0..8 {
-                            vram.tiles[a / 16][(a % 16) * 4 + i] = if bits[7 - i] {
-                                vram.tiles[a / 16][a % 16 * 4 + i] | 2
-                            } else {
-                                vram.tiles[a / 16][a % 16 * 4 + i] & !2
-                            };
-                        }
-                    }
-                }
-                0x1800..=0x1bff => vram.updated_map_1 = true,
-                0x1c00..=0x1fff => vram.updated_map_2 = true,
-                _ => panic!(),
-            }*/
-            vram.vram[a as usize] = v;
-        } else {
-            let sp = rp_pico::hal::sio::spinlock_state();
-            debug!(
-                "##########################Tried to write to vram in mode3 {}",
-                sp
-            );
-        }
+        self.try_get_ram().map_or_else(
+            || {
+                debug!(
+                    "##########################Tried to write to vram in mode3 {}",
+                    rp_pico::hal::sio::spinlock_state()
+                )
+            },
+            |(mut vram, _x)| vram.vram[a as usize] = v,
+        )
     }
     pub fn read_vram(&self, a: u16) -> u8 {
-        if let Some(_spin) = VramLock::try_claim() {
-            self.ram.borrow().vram[a as usize]
-        } else {
-            debug!("##########################Tried to read from vram in mode3");
-            0xff
-        }
+        self.try_get_ram().map_or_else(
+            || {
+                debug!("##########################Tried to read from vram in mode3");
+                0xff
+            },
+            |(vram, _x)| vram.vram[a as usize],
+        )
     }
 
     pub fn read_register(&self, a: u16) -> u8 {
-        let _spin = RegLock::claim();
-        let reg = self.reg.borrow();
-
-        match a {
+        self.with_reg(|reg| match a {
             0x40 => reg.read_control(),
             0x41 => reg.read_status(),
             0x42 => reg.read_scroll_y(),
@@ -757,12 +740,10 @@ impl Video {
                 info!("IMPOSSIBLE");
                 0xff
             }
-        }
+        })
     }
     pub fn write_register(&self, a: u16, v: u8) {
-        let _spin = RegLock::claim();
-        let mut reg = self.reg.borrow_mut();
-        match a {
+        self.with_reg(|mut reg| match a {
             0x40 => reg.write_control(v),
             0x41 => reg.write_status(v),
             0x42 => reg.write_scroll_y(v),
@@ -776,465 +757,6 @@ impl Video {
             _ => {
                 info!("IMPOSSIBLE");
             }
-        }
-    }
-}
-pub fn apply_palette(v: u8, palette: u8) -> u8 {
-    (palette >> (v * 2)) & 0b11
-}
-
-trait PixelPipeline {
-    fn init(vram: &VideoRam, oam: &[Sprite; 40], reg: &RefCell<VideoRegisters>, line: u8) -> Self;
-    fn refresh(&mut self, vram: &VideoRam, oam: &[Sprite; 40], x: u8);
-    fn pixel(
-        &mut self,
-        vram: &VideoRam,
-        oam: &[Sprite; 40],
-        reg: &RefCell<VideoRegisters>,
-        x: u8,
-    ) -> Option<u8>;
-}
-
-struct BgLineRenderer {
-    enabled: bool,
-    tile_set: bool,
-    tile_map_line_offset: u16,
-    line: u16,
-    //tile_line: u16,
-    tile_sub_line: u8,
-    column_offset: u8,
-
-    //tile_column: u8,
-    //tile_sub_column: u8,
-    //map_offset: u16,
-    //tile: u8,
-    tile_data: (u8, u8),
-    tile_bit: u8,
-}
-
-impl PixelPipeline for BgLineRenderer {
-    fn init(
-        vram: &VideoRam,
-        oam: &[Sprite; 40],
-        reg: &RefCell<VideoRegisters>,
-        //enable_background:bool,
-        //background_tile_map:bool,
-        line: u8,
-        //scroll_x:u8,
-        //scroll_y:u8
-    ) -> Self {
-        let _spin3 = RegLock::claim();
-        let reg = reg.borrow();
-        let tile_map = if reg.background_tile_map {
-            0x1C00
-        } else {
-            0x1800
-        };
-        let bg_line = (line as u16 + reg.scroll_y as u16) % 256;
-        let tile_line = bg_line / 8;
-        let mut out = BgLineRenderer {
-            enabled: reg.enable_background,
-            tile_set: reg.background_tile_map,
-            tile_map_line_offset: tile_map + tile_line * 32,
-            line: bg_line,
-            //tile_line,
-            tile_sub_line: (bg_line % 8) as u8,
-            column_offset: reg.scroll_x,
-            //set by refresh
-            //tile_column: 0,
-            tile_bit: 8,
-            //map_offset: 0,
-            //tile: 0,
-            tile_data: (0, 0),
-        };
-        out.refresh(vram, oam, 0);
-        out
-    }
-    fn refresh(&mut self, vram: &VideoRam, oam: &[Sprite; 40], x: u8) {
-        if self.tile_bit >= 8 {
-            let column = self.column_offset.wrapping_add(x);
-            let tile_column = column / 8;
-            self.tile_bit = column % 8;
-            let map_offset = self.tile_map_line_offset + tile_column as u16;
-            let tile = vram.vram[map_offset as usize];
-            self.tile_data = vram.get_tile(self.tile_set, tile, self.tile_sub_line)
-        }
-    }
-    fn pixel(
-        &mut self,
-        vram: &VideoRam,
-        oam: &[Sprite; 40],
-        reg: &RefCell<VideoRegisters>,
-        x: u8,
-    ) -> Option<u8> {
-        if self.enabled {
-            //let color = vram.get_tile(
-            //    self.tile_set,
-            //    self.tile,
-            //    self.tile_sub_line * 8 + self.tile_sub_column as u16,
-            //);
-            let color = get_tile_pixel(self.tile_data, self.tile_bit);
-            // ((self.tile_data.0 >> self.tile_bit) & 1)
-            //    + (((self.tile_data.1 >> self.tile_bit) & 1) * 2);
-            self.tile_bit += 1;
-            self.refresh(vram, oam, x);
-            Some(color)
-        } else {
-            None
-        }
-    }
-}
-
-fn get_tile_pixel(data: (u8, u8), bit: u8) -> u8 {
-    ((data.0 >> bit) & 1) + (((data.1 >> bit) & 1) * 2)
-}
-
-struct SpriteRenderer {
-    enabled: bool,
-    yoffset: u8,
-    sprite_size: bool,
-    //    line_buffer: [Pixel;160],
-    list: [Option<Sprite>; 10],
-    line: u8,
-}
-
-impl SpriteRenderer {
-    fn init(oam: &[Sprite; 40], reg: &RefCell<VideoRegisters>, line: u8) -> Self {
-        let (sprite_size, enable_sprites) = {
-            let _spin = RegLock::claim();
-            let reg = reg.borrow();
-            (reg.sprite_size, reg.enable_sprites)
-        };
-        let yoffset;
-        if sprite_size {
-            yoffset = 16;
-        } else {
-            yoffset = 8;
-        }
-
-        if enable_sprites == false {
-            return SpriteRenderer {
-                enabled: false,
-                yoffset,
-                sprite_size,
-                //                line_buffer:[Pixel{behind_bg:true,palette:false,color:0};160],
-                line,
-                list: [None; 10],
-            };
-        }
-
-        let mut list: [Option<Sprite>; 40] = [None; 40];
-        for i in 0..40 {
-            if (oam[i].y <= line + 16 && oam[i].x > line + 16 - yoffset) {
-                list[i] = Some(oam[i].clone());
-            } else {
-                list[i] = None;
-            }
-        }
-
-        list.sort_unstable_by(|a, b| {
-            if let (Some(a), Some(b)) = (a, b) {
-                b.x.cmp(&a.x)
-            } else {
-                b.cmp(a)
-            }
-        });
-        let mut out_list = [None; 10];
-        for i in 0..10 {
-            out_list[i] = list[i + 30];
-        }
-        SpriteRenderer {
-            enabled: true,
-            sprite_size,
-            yoffset,
-            //            line_buffer,
-            list: out_list,
-            line,
-        }
-    }
-    pub fn render(&mut self, ram: &VideoRam) -> [Pixel; 160] {
-        if self.enabled {
-            let mut line = [Pixel {
-                behind_bg: false,
-                palette: false,
-                color: 0,
-            }; 160];
-            for f in self.list.iter().filter_map(|x| *x) {
-                let mut tile_line = self.line as i16 - (f.y as i16 - 16);
-                let mut tile;
-                if self.sprite_size {
-                    if tile_line < 8 {
-                        //upper tile
-                        tile = f.tile & 0xfe;
-                    } else {
-                        //lower tile
-                        tile_line -= 8;
-                        tile = f.tile | 0x01;
-                    }
-                    if f.y_flip {
-                        tile ^= 0x01;
-                    }
-                } else {
-                    tile = f.tile;
-                }
-
-                let tile_line = if f.y_flip { 7 - tile_line } else { tile_line } as u8;
-
-                //            println!("16 tile {} {} {:02x} {}",f.x,f.y,tile,tile_line);
-                let tile_line_data = ram.get_tile(true, tile, tile_line);
-                let start = f.x.saturating_sub(8);
-                let mut tile_bit = start.abs_diff(f.x);
-                for i in start..core::cmp::min(f.x, 159) {
-                    let tile_column = i + 8 - f.x;
-                    let tile_column = if f.x_flip {
-                        7 - tile_column
-                    } else {
-                        tile_column
-                    };
-                    let color = get_tile_pixel(tile_line_data, tile_bit);
-                    tile_bit += 1;
-                    //ram.get_tile_1(tile, (tile_line * 8 + tile_column as i16) as u16);
-                    //                println!("pixel {} {} {}",self.line,i,color);
-                    if color != 0 {
-                        line[i as usize] = Pixel {
-                            behind_bg: f.behind_bg,
-                            palette: f.palette,
-                            color,
-                        };
-                    }
-                }
-            }
-            line
-        } else {
-            [Pixel {
-                behind_bg: false,
-                palette: false,
-                color: 0,
-            }; 160]
-        }
-    }
-}
-
-struct WindowLineRenderer {
-    enabled: bool,
-    tile_set: bool,
-    tile_map_line_offset: u16,
-    screen_offset: u8,
-    window_offset: u8,
-    //tile_line: u8,
-    tile_sub_line: u8,
-
-    //tile_column: u8,
-    //tile_sub_column: u8,
-    //map_offset: u16,
-    //tile: u8,
-    tile_bit: u8,
-    tile_data: (u8, u8),
-}
-
-impl PixelPipeline for WindowLineRenderer {
-    fn init(
-        _vram: &VideoRam,
-        _oam: &[Sprite; 40],
-        reg: &RefCell<VideoRegisters>,
-        line: u8,
-    ) -> Self {
-        let _spin3 = RegLock::claim();
-        let reg = reg.borrow();
-        let tile_line = line as u16 / 8;
-        let tile_map = if reg.background_tile_map {
-            0x1C00
-        } else {
-            0x1800
-        };
-        let out = WindowLineRenderer {
-            enabled: reg.enable_window && reg.window_scroll_x <= 167 && reg.scroll_y <= line,
-            tile_set: reg.background_tile_map,
-            tile_map_line_offset: tile_map + tile_line * 32,
-            screen_offset: reg.window_scroll_x.saturating_sub(7),
-            window_offset: 7u8.saturating_sub(reg.window_scroll_x),
-            //tile_line,
-            tile_sub_line: line % 8,
-
-            //tile_column: 0,
-            tile_bit: 8,
-            //map_offset: 0,
-            //tile: 0,
-            tile_data: (0, 0),
-        };
-        out
-    }
-    fn refresh(&mut self, vram: &VideoRam, _oam: &[Sprite; 40], x: u8) {
-        if self.tile_bit >= 8 {
-            let column = x.saturating_sub(self.screen_offset);
-            let tile_column = column / 8;
-            self.tile_bit = column % 8;
-            let map_offset = self.tile_map_line_offset + tile_column as u16;
-            let tile = vram.vram[map_offset as usize];
-            self.tile_data = vram.get_tile(self.tile_set, tile, self.tile_sub_line)
-        }
-    }
-    fn pixel(
-        &mut self,
-        vram: &VideoRam,
-        oam: &[Sprite; 40],
-        reg: &RefCell<VideoRegisters>,
-        x: u8,
-    ) -> Option<u8> {
-        if self.enabled && self.screen_offset >= x {
-            self.refresh(vram, oam, x);
-            let color = ((self.tile_data.0 >> self.tile_bit) & 1)
-                + (((self.tile_data.1 >> self.tile_bit) & 1) * 2);
-            self.tile_bit += 1;
-            Some(color)
-        } else {
-            None
-        }
-    }
-}
-
-pub fn embedded_loop(
-    ms: u32,
-    fifo: &mut SioFifo,
-    video: &RefCell<Video>,
-    start_display: fn(),
-    push_display: fn(u8),
-    end_display: fn(),
-) {
-    let base = [0xf, 0x8, 0x4, 0];
-    let base_up = [0xf0, 0x80, 0x40, 0];
-    //    let cp = unsafe{cortex_m::Peripherals::steal()};
-    let video = video.borrow();
-    let mut display_started = false;
-    loop {
-        'screen: loop {
-            //TODE send mode change interrupt
-            //TODO send line interrupt
-            //TODO send vblank
-            //TODO set line registers
-            let enabled = {
-                let _spin3 = RegLock::claim();
-                let mut reg = video.reg.borrow_mut();
-                reg.video_mode = 1;
-                reg.enable_lcd
-            };
-
-            if !enabled {
-                if display_started {
-                    Ipc::DisplayOff.send(fifo);
-                    display_started = false;
-                }
-                cortex_m::asm::delay(ms / 64);
-                continue;
-            } else {
-                if !display_started {
-                    Ipc::DisplayOn.send(fifo);
-                    display_started = true;
-                }
-            }
-
-            start_display();
-            'line: for l in 0..144 {
-                {
-                    let (
-                        background_palette_bits,
-                        sprite_palette_0_bits,
-                        sprite_palette_1_bits,
-                        mode2_interrupt,
-                    ) = {
-                        let _spin3 = RegLock::claim();
-                        let mut reg = video.reg.borrow_mut();
-                        reg.video_mode = 2;
-                        reg.line = l;
-                        (
-                            reg.background_palette_bits,
-                            reg.sprite_palette_0_bits,
-                            reg.sprite_palette_1_bits,
-                            reg.enable_mode_2_oam_check,
-                        )
-                    };
-                    Ipc::Oam(mode2_interrupt).send(fifo);
-                    let _spin1 = OamLock::claim(); // mode 2
-                    let oam = video.oam.borrow();
-                    let mut sprites = SpriteRenderer::init(&oam, &video.reg, l);
-                    {
-                        let _spin3 = RegLock::claim();
-                        let mut v = video.reg.borrow_mut();
-                        v.video_mode = 3;
-                    }
-                    let _spin2 = VramLock::claim(); // mode 3
-                    let vram = video.ram.borrow();
-                    let mut bg = BgLineRenderer::init(&vram, &oam, &video.reg, l);
-                    let mut window = WindowLineRenderer::init(&vram, &oam, &video.reg, l);
-                    let sprites = sprites.render(&vram);
-                    let mut even = 0;
-                    'pixel: for x in 0..160 {
-                        let bw = if let Some(p) = window.pixel(&vram, &oam, &video.reg, x) {
-                            p
-                        } else {
-                            bg.pixel(&vram, &oam, &video.reg, x).unwrap_or(0)
-                        };
-                        let bw_val = apply_palette(bw, background_palette_bits);
-                        let sprite = sprites[x as usize];
-                        let sprite_val = apply_palette(
-                            sprite.color,
-                            if sprite.palette {
-                                sprite_palette_1_bits
-                            } else {
-                                sprite_palette_0_bits
-                            },
-                        );
-                        let pixel = if sprite.behind_bg {
-                            if bw == 0 {
-                                sprite_val
-                            } else {
-                                bw_val
-                            }
-                        } else {
-                            if sprite.color == 0 {
-                                bw_val
-                            } else {
-                                sprite_val
-                            }
-                        };
-                        if x & 1 == 0 {
-                            //even line, save data
-                            even = pixel; //save 1/3 pixel
-                        } else {
-                            //odd line, send data
-                            push_display(base_up[even as usize] | base[pixel as usize]);
-                            //send saved 1/3 pixelg
-                        }
-                        push_display(base_up[pixel as usize] | base[pixel as usize]);
-                    }
-                    drop(_spin1);
-                    drop(_spin2);
-                }
-                let interrupt_hblank = {
-                    let _spin3 = RegLock::claim();
-                    let mut v = video.reg.borrow_mut();
-                    v.video_mode = 0;
-                    v.enable_mode_0_hblank_check
-                };
-                Ipc::Hblank(interrupt_hblank).send(fifo);
-                cortex_m::asm::delay(20 * ms / 1000);
-                // mode 0
-            }
-            end_display();
-
-            for l in 144..153 {
-                let (interrupt_vblank, line) = {
-                    let _spin3 = RegLock::claim();
-                    let mut reg = video.reg.borrow_mut();
-                    reg.video_mode = 1;
-                    reg.line = l;
-                    (reg.enable_mode_1_vblank_check, (l == 144))
-                };
-                if line {
-                    Ipc::VBlank(interrupt_vblank).send(fifo);
-                }
-                cortex_m::asm::delay(ms / 10);
-            }
-        }
+        })
     }
 }

@@ -33,7 +33,9 @@ pub enum CpuState {
 pub fn instruct(ram: &mut Ram, reg: &mut Registers, alu: &mut Alu) -> CpuState {
     fn read_op(ram: &mut Ram, reg: &mut Registers) -> u8 {
         let r = ram.read(reg.pc);
-            //    print!("{:02x} ",r);
+        /*if reg.pc > 0x90 {
+            info!("{:04x}:{:02x} ", reg.pc, r);
+        }*/
         reg.pc += 1;
         r
     }

@@ -150,7 +150,7 @@ impl Ram {
                     self.cart.fullrom[a as usize]
                 }
             }
-            0x0000..=0x3fff =>
+            0x0100..=0x3fff =>
             //ROM #0
             {
                 self.cart.fullrom[(a % 0x4000) as usize]
@@ -183,7 +183,7 @@ impl Ram {
             0xfe00..=0xfe9f =>
             //OAM
             {
-                trace!("reading oam");
+                //debug!("reading oam, {:x}", a);
                 self.oam[(a - 0xfe00) as usize]
             }
             0xff00..=0xff4b =>
@@ -252,6 +252,7 @@ impl Ram {
             0xfe00..=0xfe9f =>
             //OAM
             {
+                //self.oam[(a - 0xfe00) as usize] = v;
                 self.video.borrow().write_oam(a - 0xfe00, v)
             }
             0xff00..=0xff4b =>
@@ -273,6 +274,7 @@ impl Ram {
             0xff50 =>
             // boot end
             {
+                info!("#######   end of boot sequence");
                 self.booting = false;
             }
             0xfea0..=0xfeff | 0xff4c..=0xff4f | 0xff51..=0xff7f =>
