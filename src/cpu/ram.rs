@@ -285,34 +285,41 @@ impl Ram {
         }
         trace!("wrote {:02x}:{} at {:04x}", v, v as char, a);
     }
+    #[inline]
     pub fn read8(&mut self, l: u8, h: u8) -> u8 {
         let a = u8tou16(l, h);
         self.read(a)
     }
+    #[inline]
     pub fn write8(&mut self, l: u8, h: u8, v: u8) {
         let a = u8tou16(l, h);
         self.write(a, v);
     }
+    #[inline]
     pub fn write88(&mut self, l: u8, h: u8, v: (u8, u8)) {
         let a = u8tou16(l, h);
         self.write(a, v.0);
         self.write(a + 1, v.1);
     }
+    #[inline]
     pub fn push88(&mut self, sp: &mut u16, l: u8, h: u8) {
         *sp -= 2;
         self.write(*sp, l);
         self.write(*sp + 1, h);
     }
+    #[inline]
     pub fn push16(&mut self, sp: &mut u16, v: u16) {
         let (l, h) = u16tou8(v);
         self.push88(sp, l, h)
     }
+    #[inline]
     pub fn pop88(&mut self, sp: &mut u16) -> (u8, u8) {
         let l = self.read(*sp);
         let h = self.read(*sp + 1);
         *sp += 2;
         (l, h)
     }
+    #[inline]
     pub fn pop16(&mut self, sp: &mut u16) -> u16 {
         let (l, h) = self.pop88(sp);
         u8tou16(l, h)

@@ -147,6 +147,7 @@ impl InterruptManager {
         true
     }
 
+    #[inline]
     pub fn try_interrupt(ram: &mut ram::Ram, reg: &mut registers::Registers) {
         if ram.interrupt.master_enable {
             if ram.interrupt.enable_vblank && ram.interrupt.request_vblank {

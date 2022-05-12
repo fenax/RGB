@@ -1,5 +1,5 @@
 use crate::cpu::ram::io::video::*;
-use crate::{display_end, display_start_line, display_wait_sync, Ipc};
+use crate::{display_dma_line, display_end, display_start_line, display_wait_sync, Ipc};
 use core::cell::RefCell;
 use defmt::{debug, info};
 use rp_pico::hal::sio::SioFifo;
@@ -335,8 +335,10 @@ pub fn embedded_loop(
 
             //start_display();
             display_wait_sync();
-            'line: for l in 0..144 {
-                let mut line_buff = [0u8; 160];
+
+            let mut line_buff = [[0u8; 240]; 2];
+            'line: for l in 0..144u8 {
+                let line_buff = &mut line_buff[l as usize & 1];
                 //info!("linebuffer at {:x}", (&line_buff) as *const u8);
 
                 //info!("line : {}", l);
@@ -399,7 +401,7 @@ pub fn embedded_loop(
                                     }
                                 };
                                 //info!("bg : {} pixel : {}", bw_val, pixel);
-                                line_buff[x as usize] = (pixel ^ 0b11) << 2;
+                                //line_buff[x as usize] = (pixel ^ 0b11) << 2;
                                 /*
                                 match x & 0b11 {
                                     0 => {
@@ -427,15 +429,20 @@ pub fn embedded_loop(
                                     }
                                     _ => panic!("IMpossible it should be"),
                                 }*/
-                                /*if x & 1 == 0 {
+                                if x & 1 == 0 {
                                     //even line, save data
                                     even = pixel; //save 1/3 pixel
                                 } else {
                                     //odd line, send data
-                                    push_display(base_up[even as usize] | base[pixel as usize]);
+                                    line_buff[(x as usize >> 1) * 3] =
+                                        base_up[even as usize] | base[even as usize];
+                                    line_buff[(x as usize >> 1) * 3 + 1] =
+                                        base_up[even as usize] | base[pixel as usize];
+                                    line_buff[(x as usize >> 1) * 3 + 2] =
+                                        base_up[pixel as usize] | base[pixel as usize];
                                     //send saved 1/3 pixelg
                                 }
-                                push_display(base_up[pixel as usize] | base[pixel as usize]);*/
+                                //push_display(base_up[pixel as usize] | base[pixel as usize]);
                             }
                         });
                     });
@@ -448,13 +455,12 @@ pub fn embedded_loop(
                 });
                 Ipc::Hblank(interrupt_hblank).send(fifo);
                 //info!("{}", line_buff);
-                display_start_line(l, [l, 0, 1, 0], &line_buff);
+                display_dma_line(l as u8, [l as u8, 0, 1, 0], line_buff);
 
                 //display_end();
                 //cortex_m::asm::delay(20 * ms / 1000);
                 // mode 0
             }
-            end_display();
 
             for l in 144..153 {
                 let (interrupt_vblank, line) = video.with_reg(|mut reg| {

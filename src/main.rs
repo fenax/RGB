@@ -13,7 +13,7 @@ use cortex_m::{
 use cortex_m_rt::entry;
 use defmt::*;
 use defmt_rtt as _;
-use embedded_hal::digital::v2::{InputPin, OutputPin};
+use embedded_hal::digital::v2::{InputPin, OutputPin, StatefulOutputPin};
 use nb::block;
 use panic_probe as _;
 
@@ -30,6 +30,7 @@ use bsp::hal::{
     sio::Sio,
     watchdog::Watchdog,
 };
+use pac::interrupt;
 
 mod cpu;
 mod display;
@@ -163,27 +164,27 @@ impl Gameboy {
                 defmt::panic!("instruction 97 with previous {} - {:x} ", clock % 16, instr);
             }*/
 
-            if !halted {
-                if cpu_wait == 0 {
-                    //print!("\n{:05x}{}{} ",clock,self.alu,self.reg);
-                    if !halted {
-                        match instruct(&mut self.ram, &mut self.reg, &mut self.alu) {
-                            CpuState::None => {}
-                            CpuState::Wait(t) => cpu_wait = t,
-                            CpuState::Halt => {
-                                debug!("halted at {:x}", self.reg.pc);
-                                halted = true;
-                            }
-                            CpuState::Stop => {
-                                defmt::panic!("Stop unimplemented, unsure what it should do");
-                            }
+            //if !halted {
+            if cpu_wait == 0 {
+                //print!("\n{:05x}{}{} ",clock,self.alu,self.reg);
+                if !halted {
+                    match instruct(&mut self.ram, &mut self.reg, &mut self.alu) {
+                        CpuState::None => {}
+                        CpuState::Wait(t) => cpu_wait = t,
+                        CpuState::Halt => {
+                            debug!("halted at {:x}", self.reg.pc);
+                            halted = true;
+                        }
+                        CpuState::Stop => {
+                            defmt::panic!("Stop unimplemented, unsure what it should do");
                         }
                     }
-                    cpu::ram::io::InterruptManager::try_interrupt(&mut self.ram, &mut self.reg);
-                } else {
-                    cpu_wait -= 1;
                 }
+                cpu::ram::io::InterruptManager::try_interrupt(&mut self.ram, &mut self.reg);
+            } else {
+                cpu_wait -= 1;
             }
+            //}
 
             //IO
             let mut interrupted = false;
@@ -325,6 +326,89 @@ fn display_four_pixels(l: u8, column: u8, data: [u8; 6]) {
     display.fill_buffer(0x3C, &data);
 }
 
+static set_cs_pin: u32 = 1 << 17;
+static CTRL: u32 = (1 << 21) + 0 + 0 + 0 + (1 << 4) + 0x0 + 0b11;
+
+static mut DISPLAY_DMA: [u32; 12] = unsafe {
+    [
+        0,
+        0x4003c000u32 + 0x8, // SPI0 + SSPDR
+        240,
+        CTRL + (16 << 15),
+        0,
+        0xd0000000u32 + 0x1Cu32, // SIO + GPIO_OUT_XOR
+        1,
+        CTRL + (0x2 << 2),
+        0,
+        0,
+        0,
+        0,
+    ]
+};
+
+fn display_dma_line(l: u8, flags: [u8; 4], line: &[u8; 240]) {
+    cortex_m::interrupt::free(|_| unsafe {
+        // Now interrupts are disabled
+
+        let mut display = unsafe { DISPLAY.as_mut().expect("display not initialized") };
+        //while display.chip_select.is_set_low().unwrap() {
+        //    info!("wait")
+        // }
+        DISPLAY_DMA[0] = line.as_ptr() as u32;
+        DISPLAY_DMA[4] = core::ptr::addr_of!(set_cs_pin) as u32;
+
+        unsafe {
+            let CH0_READ_ADDR = bsp::pac::DMA::PTR.cast::<u32>().offset(0x00) as *mut u32;
+            let CH0_WRITE_ADDR = bsp::pac::DMA::PTR.cast::<u32>().offset(0x01) as *mut u32;
+            let CH0_TRANS_COUNT = bsp::pac::DMA::PTR.cast::<u32>().offset(0x02) as *mut u32;
+            let CH0_CTRL_TRIG = bsp::pac::DMA::PTR.cast::<u32>().offset(0x03) as *mut u32;
+            let CH1_START = bsp::pac::DMA::PTR.cast::<u32>().offset(0x40 / 4) as *mut u32;
+            let to_write = (1 << 10) + (0x2 << 6) + (1 << 5) + (1 << 4) + (0x2 << 2) + 0b11;
+
+            /*
+                        //SSPDMACR.TXDMAE = 1
+
+                        core::ptr::write_volatile(CH0_READ_ADDR, line.as_ptr() as u32);
+                        core::ptr::write_volatile(
+                            CH0_WRITE_ADDR,
+                            pac::SPI0::PTR.cast::<u32>().offset(0x2) as u32,
+                        );
+                        core::ptr::write_volatile(CH0_TRANS_COUNT, 240);
+            */
+            core::ptr::write_volatile(CH0_READ_ADDR, core::ptr::addr_of!(DISPLAY_DMA) as u32);
+            core::ptr::write_volatile(CH0_WRITE_ADDR, CH1_START as u32);
+            core::ptr::write_volatile(CH0_TRANS_COUNT, 4);
+
+            //if l == 0 {
+            display.send_command(0x2A, &[0x00, 80, 0x00, 80 + 160 - 1]);
+            display.send_command(0x2B, &[0x00, 40 + l, 0x00, 40 + l]);
+            display.send_command(0x36, &[0x70]);
+            display.send_command(0x3A, &[0x03]);
+            cortex_m::asm::delay(8 * 8 * 2 * 2); //8 level buffer, 8 bits, 2 cpu clocks per bit, 2 to be sure;
+
+            display.data_command.set_low().unwrap();
+            display.chip_select.set_low().unwrap();
+            display.spi.write(&[0x2C]).unwrap();
+            display.data_command.set_high().unwrap();
+            /* } else {
+                display.data_command.set_low().unwrap();
+                display.chip_select.set_low().unwrap();
+                display.spi.write(&[0x3C]).unwrap();
+                display.data_command.set_high().unwrap();
+            }*/
+            /*
+            let INTS0 = pac::DMA::PTR.cast::<u32>().offset(0x40C / 4) as *mut u32;
+
+            core::ptr::write_volatile(INTS0, 0x1);
+
+            let INTE0 = pac::DMA::PTR.cast::<u32>().offset(0x404 / 4) as *mut u32;
+            core::ptr::write_volatile(INTE0, 0x1);*/
+            //let to_write = (16 << 15) + 0 + 0 + 0 + 0 + (1 << 4) + 0x0 + 0b11;
+            core::ptr::write_volatile(CH0_CTRL_TRIG, to_write);
+        }
+    })
+}
+
 fn display_start_line(l: u8, flags: [u8; 4], line: &[u8; 160]) {
     //let lcd_te = unsafe { LCD_TE.as_ref().expect("lcd_te not initialized") };
     let mut display = unsafe { DISPLAY.as_mut().expect("display not initialized") };
@@ -461,6 +545,12 @@ fn display_loop() -> ! {
     );
 
     let core = unsafe { pac::CorePeripherals::steal() };
+
+    /*
+    pac.SYSCFG
+        .proc1_nmi_mask
+        .modify(|r, w| unsafe { w.bits(r.bits() | 1 << 11) });
+        */
     let sys_freq = 125_000_000; //sio.fifo.read_blocking();
     let ms = sys_freq / 1000;
     let mut delay = cortex_m::delay::Delay::new(core.SYST, sys_freq);
@@ -472,6 +562,7 @@ fn display_loop() -> ! {
         pins.gpio16.into_push_pull_output(),
         &mut pac.RESETS,
     );
+
     let lcd_te = pins.gpio21.into_floating_input();
     display.send_command(0x01, &[]);
     delay.delay_ms(150);
@@ -488,6 +579,26 @@ fn display_loop() -> ! {
     //let mut screen = [0u8; 240 * 320 * 2];
     display_fill(0xf8, 0x00);
     //display.send_command(0x2C, &screen);
+
+    pac.RESETS.reset.modify(|_, w| w.dma().set_bit());
+
+    pac.RESETS.reset.modify(|_, w| w.dma().clear_bit());
+    while pac.RESETS.reset_done.read().dma().bit_is_clear() {}
+    unsafe {
+        // Enable the DMA interrupt
+        let INTS0 = pac::DMA::PTR.cast::<u32>().offset(0x40C / 4) as *mut u32;
+        core::ptr::write_volatile(
+            bsp::pac::SPI0::PTR.cast::<u32>().offset(0x24 / 4) as *mut u32,
+            0x2,
+        );
+        info!(
+            "INTR {} ",
+            *(bsp::pac::DMA::PTR.cast::<u32>().offset(0x400 / 4) as *mut u32)
+        );
+        core::ptr::write_volatile(INTS0, 0x1);
+
+        pac::NVIC::unmask(bsp::hal::pac::Interrupt::DMA_IRQ_0);
+    };
     sio.fifo.write_blocking(0);
     unsafe {
         renderer::embedded_loop(
@@ -570,6 +681,7 @@ fn main() -> ! {
     )
     .ok()
     .unwrap();
+    pac::NVIC::mask(bsp::hal::pac::Interrupt::DMA_IRQ_0);
 
     let mut mc = Multicore::new(&mut pac.PSM, &mut pac.PPB, &mut sio);
 
@@ -577,6 +689,12 @@ fn main() -> ! {
     let core = pac::CorePeripherals::take().unwrap();
     let core1 = &mut cores[1];
 
+    unsafe {
+        core::ptr::write(
+            bsp::pac::DMA::PTR.cast::<u32>().offset(0x101) as *mut u32,
+            0b1,
+        );
+    }
     let cart = cpu::cartridge::Cartridge::default().setup();
     cart.extract_info();
     info!(
@@ -651,3 +769,16 @@ fn main() -> ! {
 #[interrupt]
 fn SPI0_IRQ() {}
 */
+#[interrupt]
+fn DMA_IRQ_0() {
+    let mut display = unsafe { DISPLAY.as_mut().expect("display not initialized") };
+
+    //cortex_m::asm::delay(8 * 8 * 2 * 2); //8 level buffer, 8 bits, 2 cpu clocks per bit, 2 to be sure;
+
+    display.chip_select.set_high().unwrap();
+    unsafe {
+        let INTS0 = pac::DMA::PTR.cast::<u32>().offset(0x40C / 4) as *mut u32;
+
+        core::ptr::write_volatile(INTS0, 0x1);
+    }
+}
