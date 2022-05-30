@@ -30,6 +30,7 @@ pub enum CpuState {
     Stop,
 }
 
+#[inline(always)]
 pub fn instruct(ram: &mut Ram, reg: &mut Registers, alu: &mut Alu) -> CpuState {
     fn read_op(ram: &mut Ram, reg: &mut Registers) -> u8 {
         let r = ram.read(reg.pc);

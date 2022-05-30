@@ -1,7 +1,8 @@
 use crate::cpu::ram::io::video::*;
-use crate::{display_dma_line, display_end, display_start_line, display_wait_sync, Ipc};
+use crate::{display_dma_line, display_end, display_line, display_wait_sync, Ipc};
 use core::cell::RefCell;
 use defmt::{debug, info};
+use pio_proc::pio_asm;
 use rp_pico::hal::sio::SioFifo;
 
 #[derive(Clone, Copy)]
@@ -295,7 +296,7 @@ pub fn embedded_loop(
     fifo: &mut SioFifo,
     video: &RefCell<Video>,
     wait_sync_display: fn(),
-    start_line_display: fn(u8, [u8; 4], &[u8; 160]),
+    start_display: fn(u8, [u8; 4], &[u8; 240]),
     display_four_pixels: fn(u8, u8, [u8; 6]),
     push_display: fn(u8),
     end_display: fn(),
@@ -305,6 +306,14 @@ pub fn embedded_loop(
     //    let cp = unsafe{cortex_m::Peripherals::steal()};
     let video = video.borrow();
     let mut display_started = false;
+    let program = pio_proc::pio_asm!(
+        "set pindirs, 1",
+        ".wrap_target",
+        "set pins, 0 [31]",
+        "set pins, 1 [31]",
+        ".wrap",
+        options(max_program_size = 32) // Optional, defaults to 32
+    );
     loop {
         'screen: loop {
             //let mut pixel_buffer = [0u8; 6];
@@ -455,7 +464,7 @@ pub fn embedded_loop(
                 });
                 Ipc::Hblank(interrupt_hblank).send(fifo);
                 //info!("{}", line_buff);
-                display_dma_line(l as u8, [l as u8, 0, 1, 0], line_buff);
+                display_line(l as u8, [l as u8, 0, 1, 0], line_buff);
 
                 //display_end();
                 //cortex_m::asm::delay(20 * ms / 1000);

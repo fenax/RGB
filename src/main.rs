@@ -22,13 +22,16 @@ use panic_probe as _;
 use rp_pico as bsp;
 // use sparkfun_pro_micro_rp2040 as bsp;
 
-use bsp::hal::{
-    clocks::init_clocks_and_plls,
-    gpio::{pin::FunctionSpi, Floating, Input},
-    multicore::{Multicore, Stack},
-    pac,
-    sio::Sio,
-    watchdog::Watchdog,
+use bsp::{
+    hal::{
+        clocks::init_clocks_and_plls,
+        gpio::{pin::FunctionSpi, Floating, Input},
+        multicore::{Multicore, Stack},
+        pac,
+        sio::Sio,
+        watchdog::Watchdog,
+    },
+    pac::{Peripherals, XIP_CTRL},
 };
 use pac::interrupt;
 
@@ -127,7 +130,7 @@ impl Gameboy {
         }
     }
 
-    fn main_loop(&mut self, mut fifo: bsp::hal::sio::SioFifo, mut syst: SYST) {
+    fn main_loop(&mut self, mut fifo: bsp::hal::sio::SioFifo, mut syst: SYST, mut xip: XIP_CTRL) {
         info!("MAIN CPU LOOP");
         debug!("debug mode ON");
         let mut clock = 0 as u32;
@@ -140,6 +143,9 @@ impl Gameboy {
         syst.set_clock_source(cortex_m::peripheral::syst::SystClkSource::External);
         syst.clear_current();
         syst.enable_counter();
+        xip.ctr_acc.reset();
+        xip.ctr_hit.reset();
+
         let mut instr = [0u16; 32];
         loop {
             //            if self.running == false {
@@ -149,15 +155,19 @@ impl Gameboy {
             if clock % 0x100000 == 0 {
                 let val = SYST::get_current() / 125;
                 info!(
-                    "{:04x}RUNNNING FOR {} us or {} Mhz Sync is {} {} {}",
+                    "{:04x}RUNNNING FOR {} us or {} Mhz Sync is {} {} {} cache {} {}",
                     self.reg.pc,
                     val * 10,
                     1 as f32 / (val as f32 / 100000f32),
                     display_sync,
                     cpu_sync,
-                    cpu_wait
+                    cpu_wait,
+                    xip.ctr_hit.read().bits(),
+                    xip.ctr_acc.read().bits()
                 );
                 syst.clear_current();
+                xip.ctr_acc.reset();
+                xip.ctr_hit.reset();
             }
             /*instr[clock as usize % 32] = self.reg.pc;
             if self.reg.pc == 0x97 {
@@ -409,7 +419,7 @@ fn display_dma_line(l: u8, flags: [u8; 4], line: &[u8; 240]) {
     })
 }
 
-fn display_start_line(l: u8, flags: [u8; 4], line: &[u8; 160]) {
+fn display_line(l: u8, flags: [u8; 4], line: &[u8; 240]) {
     //let lcd_te = unsafe { LCD_TE.as_ref().expect("lcd_te not initialized") };
     let mut display = unsafe { DISPLAY.as_mut().expect("display not initialized") };
 
@@ -437,7 +447,7 @@ fn display_start_line(l: u8, flags: [u8; 4], line: &[u8; 160]) {
         display.data_command.set_high().unwrap();
     }
     //display.fill_buffer(0x2C, &[flags[0], 0, flags[1], flags[2], 0, flags[3]]);
-    for i in (0..160).step_by(2) {
+    /*for i in (0..160).step_by(2) {
         let a = (line[i] << 4) + line[i];
         _ = display.spi.read();
         block!(display.spi.send(a)).unwrap();
@@ -449,7 +459,13 @@ fn display_start_line(l: u8, flags: [u8; 4], line: &[u8; 160]) {
         let c = (line[i + 1] << 4) + line[i + 1];
         _ = display.spi.read();
         block!(display.spi.send(c)).unwrap();
+    }*/
+
+    for x in line {
+        _ = display.spi.read();
+        block!(display.spi.send(*x)).unwrap();
     }
+
     cortex_m::asm::delay(8 * 8 * 2); //8 level buffer, 8 bits, 2 cpu clocks per bit, 2 to be sure;
     for _ in 0..8 {
         _ = display.spi.read();
@@ -529,7 +545,7 @@ fn emulator_loop() -> ! {
     _ = fifo.read_blocking();
     info!("waited");
     let mut gb = unsafe { GB.as_mut().expect("GB is not initialized") };
-    gb.main_loop(fifo, core.SYST);
+    gb.main_loop(fifo, core.SYST, pac.XIP_CTRL);
     loop {}
 }
 
@@ -606,7 +622,7 @@ fn display_loop() -> ! {
             &mut sio.fifo,
             &VIDEO,
             display_wait_sync,
-            display_start_line,
+            display_line,
             display_four_pixels,
             display_push_byte,
             display_end,
@@ -758,7 +774,7 @@ fn main() -> ! {
     let mut gb = unsafe { GB.as_mut().expect("GB is not initialized") };
 
     watchdog.enable_tick_generation(bsp::XOSC_CRYSTAL_FREQ as u8);
-    gb.main_loop(sio.fifo, core.SYST);
+    gb.main_loop(sio.fifo, core.SYST, pac.XIP_CTRL);
     loop {
         //sio.fifo.read();
     }
