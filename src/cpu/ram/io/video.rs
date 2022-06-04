@@ -291,6 +291,10 @@ impl VideoRam {
     }
     */
 
+    pub fn get_u16_tile(&self, tile_set: bool, tile: u8, line: u8) -> u16 {
+        let (a, b) = self.get_tile(tile_set, tile, line);
+        ((a as u16) << 8) + b as u16
+    }
     pub fn get_tile(&self, tile_set: bool, tile: u8, line: u8) -> (u8, u8) {
         let tile = tile as usize;
         let line = line as usize;

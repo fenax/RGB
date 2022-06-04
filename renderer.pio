@@ -1,0 +1,40 @@
+.program renderer
+;backgroud entry point
+
+public background:
+    pull block ;number of column to skip -1
+    mov x,osr
+    pull block
+    out y,8
+before_display:
+    out null,1
+    in y,1
+    jmp x-- before_display
+    mov isr, null
+    jmp pixel_loop
+ 
+;window entry point
+public window:
+    pull block ; pull number of column to wait-1 for, if skipping, start as backgroud
+    mov x,osr
+no_window:
+    push block
+    jmp x-- no_window
+;jmp loop
+;loop
+
+;entry point if aligned
+.wrap_target
+public tile_loop:
+    pull block
+    out y,8
+    set x,7
+pixel_loop:
+    in y,1
+    in osr,1
+    push block
+    jmp x-- pixel_loop
+.wrap
+public clean:
+    pull block
+    jmp clean

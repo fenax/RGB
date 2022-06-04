@@ -131,8 +131,8 @@ impl Gameboy {
     }
 
     fn main_loop(&mut self, mut fifo: bsp::hal::sio::SioFifo, mut syst: SYST, mut xip: XIP_CTRL) {
-        info!("MAIN CPU LOOP");
-        debug!("debug mode ON");
+        //info!("MAIN CPU LOOP");
+        //debug!("debug mode ON");
         let mut clock = 0 as u32;
         let mut cpu_wait = 0;
         let mut _buffer_index = 0;
@@ -620,6 +620,8 @@ fn display_loop() -> ! {
         renderer::embedded_loop(
             ms,
             &mut sio.fifo,
+            pac.PIO0,
+            &mut pac.RESETS,
             &VIDEO,
             display_wait_sync,
             display_line,
@@ -699,7 +701,7 @@ fn main() -> ! {
     .unwrap();
     pac::NVIC::mask(bsp::hal::pac::Interrupt::DMA_IRQ_0);
 
-    let mut mc = Multicore::new(&mut pac.PSM, &mut pac.PPB, &mut sio);
+    let mut mc = Multicore::new(&mut pac.PSM, &mut pac.PPB, &mut sio.fifo);
 
     let cores = mc.cores();
     let core = pac::CorePeripherals::take().unwrap();
@@ -711,6 +713,7 @@ fn main() -> ! {
             0b1,
         );
     }
+
     let cart = cpu::cartridge::Cartridge::default().setup();
     cart.extract_info();
     info!(
@@ -762,7 +765,7 @@ fn main() -> ! {
         GB = Some(gb);
     }
 
-    let _thread = core1.spawn(display_loop, unsafe { &mut CORE1_STACK.mem });
+    let _thread = core1.spawn(unsafe { &mut CORE1_STACK.mem }, display_loop);
     //let sys_freq = clocks.system_clock.freq().integer();
 
     //display_loop();
