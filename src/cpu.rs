@@ -866,6 +866,11 @@ pub fn instruct(ram: &mut Ram, reg: &mut Registers, alu: &mut Alu) -> CpuState {
         //LDH (a8),a
         0xe0 => {
             let arg1 = read_op(ram, reg);
+            if arg1 == 0xFD {
+                info!("{:04x}setting bank {}", reg.pc - 2, reg.a);
+            } else if arg1 == 0xE1 {
+                info!("{:04x} saving rom bank {}", reg.pc - 2, reg.a);
+            }
             ram.write8(arg1, 0xff, reg.a);
             CpuState::Wait(2)
         }
@@ -886,6 +891,12 @@ pub fn instruct(ram: &mut Ram, reg: &mut Registers, alu: &mut Alu) -> CpuState {
         0xf0 => {
             let arg1 = read_op(ram, reg);
             reg.a = ram.read8(arg1, 0xff);
+            if arg1 == 0xFD {
+                info!("{:04x}getting bank {}", reg.pc - 2, reg.a);
+            } else if arg1 == 0xe1 {
+                info!("{:04x}restoring rom bank {}", reg.pc - 2, reg.a);
+            }
+
             CpuState::Wait(2)
         }
         //LD A,(C)
@@ -1242,23 +1253,24 @@ pub fn instruct(ram: &mut Ram, reg: &mut Registers, alu: &mut Alu) -> CpuState {
         }
         //RETI
         0xd9 => {
+            let old_pc = reg.pc;
             reg.pc = ram.pop16(&mut reg.sp);
             ram.interrupt.master_enable = true;
-            //            println!("RETI PC{:x} SP{:x}",reg.PC,reg.SP);
+            info!("RETI oldPC {:x} PC{:x} SP{:x}", old_pc, reg.pc, reg.sp);
             //TODO should interrupt be enabled directly or like DI and EI ?
             CpuState::Wait(1)
         }
 
         //DI
         0xf3 => {
-            ram.interrupt.order_disable = false;
-            //            println!("DI");
+            ram.interrupt.order_disable = true;
+            info!("DI, PC = {:04X}", reg.pc);
             CpuState::None
         }
         //EI
         0xfb => {
             ram.interrupt.order_enable = true;
-            //            println!("EI");
+            info!("EI");
             CpuState::None
         }
 
@@ -1281,7 +1293,8 @@ pub fn instruct(ram: &mut Ram, reg: &mut Registers, alu: &mut Alu) -> CpuState {
 
         //FIRE
         0xd3 | 0xdb | 0xdd | 0xe3 | 0xe4 | 0xeb | 0xec | 0xed | 0xf4 | 0xfc | 0xfd => {
-            panic!("cpu catch fire");
+            info!("cpu catch fire {:02X}", i);
+            CpuState::Stop
         }
     }
 }

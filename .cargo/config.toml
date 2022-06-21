@@ -18,6 +18,7 @@ rustflags = [
   # "-Z", "trap-unreachable=no",
   "-C", "inline-threshold=5",
   "-C", "no-vectorize-loops",
+  "-C", "opt-level=3",
 ]
 
 [build]

@@ -11,9 +11,9 @@ use rp_pico::pac::RESETS;
 
 use crate::bsp::hal::gpio;
 
-pub struct Display<V, W, D>
+pub struct Display</*V, */ W, D>
 where
-    V: PinId + gpio::pin::bank0::BankPinId,
+    //V: PinId + gpio::pin::bank0::BankPinId,
     W: PinId + gpio::pin::bank0::BankPinId,
     D: SpiDevice,
 {
@@ -21,30 +21,30 @@ where
     //pin data
     //  managed by SPI
     pub(crate) spi: Spi<Enabled, D, 8>,
-    pub(crate) chip_select: gpio::Pin<V, gpio::PushPullOutput>,
+    //pub(crate) chip_select: gpio::Pin<V, gpio::PushPullOutput>,
     pub(crate) data_command: gpio::Pin<W, gpio::PushPullOutput>,
 }
 
-impl<V, W, D> Display<V, W, D>
+impl</*V, */ W, D> Display</*V, */ W, D>
 where
-    V: PinId + gpio::pin::bank0::BankPinId,
+    //V: PinId + gpio::pin::bank0::BankPinId,
     W: PinId + gpio::pin::bank0::BankPinId,
     D: SpiDevice,
 {
     pub fn new(
         spi_device: D,
-        cs: gpio::Pin<V, gpio::PushPullOutput>,
+        //cs: gpio::Pin<V, gpio::PushPullOutput>,
         dc: gpio::Pin<W, gpio::PushPullOutput>,
         rst: &mut RESETS,
     ) -> Self {
         Self {
             spi: Spi::new(spi_device).init(rst, 125_000_000u32.Hz(), 62_500_000u32.Hz(), &MODE_0),
-            chip_select: cs,
+            //  chip_select: cs,
             data_command: dc,
         }
     }
     pub fn init(&mut self) {
-        self.chip_select.set_high().unwrap();
+        //  self.chip_select.set_high().unwrap();
         self.data_command.set_low().unwrap();
 
         self.send_command(0x35, &[0]);
@@ -80,7 +80,7 @@ where
     }
     pub fn send_command(&mut self, reg: u8, data: &[u8]) {
         self.data_command.set_low().unwrap();
-        self.chip_select.set_low().unwrap();
+        //self.chip_select.set_low().unwrap();
         cortex_m::asm::delay(2);
         self.spi.write(&[reg]).unwrap();
         if !data.is_empty() {
@@ -89,14 +89,14 @@ where
 
             self.spi.write(data).unwrap();
         }
-        self.chip_select.set_high().unwrap();
+        //self.chip_select.set_high().unwrap();
     }
 
     pub fn fill_buffer(&mut self, reg: u8, data: &[u8]) {
         info!("buff {} {}", reg, data);
-        self.chip_select.set_high().unwrap();
+        //self.chip_select.set_high().unwrap();
         self.data_command.set_low().unwrap();
-        self.chip_select.set_low().unwrap();
+        //self.chip_select.set_low().unwrap();
         cortex_m::asm::delay(2);
         self.spi.write(&[reg]).unwrap();
         self.data_command.set_high().unwrap();

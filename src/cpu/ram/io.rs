@@ -4,6 +4,7 @@ pub use self::audio::Audio;
 pub use self::video::Video;
 use crate::cpu::*;
 use crate::EmuKeys;
+use defmt::debug;
 use defmt::info;
 use defmt::Format;
 
@@ -120,10 +121,12 @@ impl InterruptManager {
     #[inline]
     pub fn step(ram: &mut ram::Ram, _clock: u32) -> Interrupt {
         if ram.interrupt.order_disable {
+            info!("Interrupt disabled");
             ram.interrupt.order_disable = false;
             ram.interrupt.master_enable = false;
         }
         if ram.interrupt.order_enable {
+            info!("interrupt enabled");
             ram.interrupt.order_enable = false;
             ram.interrupt.master_enable = true;
         }
@@ -151,19 +154,19 @@ impl InterruptManager {
     pub fn try_interrupt(ram: &mut ram::Ram, reg: &mut registers::Registers) {
         if ram.interrupt.master_enable {
             if ram.interrupt.enable_vblank && ram.interrupt.request_vblank {
-                //println!("running Vblank");
+                debug!("running Vblank");
                 ram.interrupt.master_enable = false;
                 ram.interrupt.request_vblank = false;
                 ram.push16(&mut reg.sp, reg.pc);
                 reg.pc = 0x40;
             } else if ram.interrupt.enable_lcd_stat && ram.interrupt.request_lcd_stat {
-                //println!("running lcd_stat" );
+                debug!("running lcd_stat");
                 ram.interrupt.master_enable = false;
                 ram.interrupt.request_lcd_stat = false;
                 ram.push16(&mut reg.sp, reg.pc);
                 reg.pc = 0x48;
             } else if ram.interrupt.enable_timer && ram.interrupt.request_timer {
-                //println!("running timer" );
+                debug!("running timer");
                 ram.interrupt.master_enable = false;
                 ram.interrupt.request_timer = false;
                 ram.push16(&mut reg.sp, reg.pc);
@@ -223,7 +226,7 @@ impl InterruptManager {
         self.enable_serial = bit(v, 3);
         self.enable_joypad = bit(v, 4);
         info!(
-            "write interrupt enable {} {} {} {} {}",
+            "write interrupt enable vb {} stat {} timer {} serial {} joypad {}",
             self.enable_vblank,
             self.enable_lcd_stat,
             self.enable_timer,
@@ -239,7 +242,7 @@ impl InterruptManager {
         self.request_serial = bit(v, 3);
         self.request_joypad = bit(v, 4);
         info!(
-            "write interrupt request {} {} {} {} {}",
+            "write interrupt request vb {} stat {} timer {} serial {} joypad {}",
             self.request_vblank,
             self.request_lcd_stat,
             self.request_timer,
@@ -270,7 +273,7 @@ impl Joypad {
             interrupt: false,
             p14: true,
             p15: true,
-            data: 0,
+            data: 0xff,
             /*up: false,
             down: false,
             right: false,
@@ -332,6 +335,10 @@ impl Joypad {
         //        println!("selection input p14{} p15{}",self.p14,self.p15);
     }
     pub fn read(&self) -> u8 {
+        info!(
+            "reading joypad buttons{} directions{} {}",
+            self.p15, self.p14, self.data
+        );
         // unsure, assuming out port is out only.
         let mut r = 0;
         r |= (self.p14 as u8) << 4;
@@ -432,6 +439,7 @@ impl Dma {
         }
     }
     pub fn write(&mut self, v: u8) {
+        //info!("started DMA transfer");
         self.address = v;
         self.started = true;
         self.index = 0;
@@ -442,10 +450,16 @@ impl Dma {
     #[inline]
     pub fn step(ram: &mut Ram, _clock: u32) -> Interrupt {
         if ram.dma.started {
-            let tmp = ram.read8(ram.dma.index, ram.dma.address);
-            ram.write8(ram.dma.index, 0xfe, tmp);
+            ram.video.borrow().with_oam(|mut oam| {
+                //                for i in (0..160){
+                let tmp = ram.read8(ram.dma.index, ram.dma.address);
+                oam[(ram.dma.index >> 2) as usize].write(ram.dma.index as u16, tmp);
+                //                }
+            });
+            //let tmp = ram.read8(ram.dma.index, ram.dma.address);
+            //ram.write8(ram.dma.index, 0xfe, tmp);
             ram.dma.index += 1;
-            if ram.dma.index > 160 {
+            if ram.dma.index >= 160 {
                 ram.dma.started = false;
             }
         }

@@ -939,7 +939,7 @@ impl Audio {
     }
 
     pub fn write_register(&mut self, a: u16, v: u8) {
-        info!("w {:02x}={:02x}", a, v);
+        info!("write audio reg {:02x}={:02x}", a, v);
         match a {
             0x26 => self.write_power_flag(v),
             0x30..=0x3f => self.wave3.write_sample_ram(a - 0x30, v),

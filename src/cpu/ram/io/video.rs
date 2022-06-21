@@ -79,9 +79,9 @@ pub struct VideoRam {
     pub vram: [u8; 0x2000],
     //tiles: [[u16; 8]; 0x180],
     //tiles: [[u8; 8 * 8]; 0x180],
-    pub updated_tiles: bool,
-    pub updated_map_1: bool,
-    pub updated_map_2: bool,
+    //pub updated_tiles: bool,
+    //pub updated_map_1: bool,
+    //pub updated_map_2: bool,
 }
 
 pub struct VideoRegisters {
@@ -174,23 +174,18 @@ impl VideoRegisters {
         bit_merge(
             false,
             false,
-            false,
+            self.line_compare == self.line,
             self.enable_mode_0_hblank_check,
             self.enable_mode_1_vblank_check,
             self.enable_mode_2_oam_check,
             self.enable_ly_lcy_check,
             true,
         ) + self.video_mode
-            + if self.line_compare == self.line {
-                1 << 3
-            } else {
-                0
-            }
     }
 
     pub fn write_scroll_y(&mut self, v: u8) {
         if VIDEO_DEBUG {
-            //    println!("write scroll y {}",v);
+            //info!("write scroll y {}", v);
         }
         self.scroll_y = v;
     }
@@ -201,7 +196,7 @@ impl VideoRegisters {
 
     pub fn write_scroll_x(&mut self, v: u8) {
         if VIDEO_DEBUG {
-            info!("write scroll x {}", v);
+            //info!("write scroll x {}", v);
         }
         self.scroll_x = v;
     }
@@ -211,7 +206,7 @@ impl VideoRegisters {
     }
 
     pub fn write_window_scroll_y(&mut self, v: u8) {
-        //        println!("write window scroll y {}",v);
+        //info!("write window scroll y {}", v);
         self.window_scroll_y = v;
     }
 
@@ -221,7 +216,7 @@ impl VideoRegisters {
 
     pub fn write_window_scroll_x(&mut self, v: u8) {
         if VIDEO_DEBUG {
-            info!("write window scroll x {}", v);
+            //info!("write window scroll x {}", v);
         }
         self.window_scroll_x = v;
     }
@@ -233,13 +228,15 @@ impl VideoRegisters {
     pub fn read_line(&self) -> u8 {
         self.line
     }
+
     pub fn read_line_compare(&self) -> u8 {
         self.line_compare
     }
+
     pub fn write_line_compare(&mut self, v: u8) {
-        if VIDEO_DEBUG {
-            info!("write line compare {} current line is {}", v, self.line);
-        }
+        //if VIDEO_DEBUG {
+        info!("write line compare {} current line is {}", v, self.line);
+        //}
         self.line_compare = v;
     }
 
@@ -302,11 +299,11 @@ impl VideoRam {
             (if tile_set { tile } else { (tile ^ 0x80) + 128 } * 16) as usize + (line as usize * 2);
         (self.vram[base], self.vram[base + 1])
     }
-    pub fn clear_update(&mut self) {
+    /*pub fn clear_update(&mut self) {
         self.updated_tiles = false;
         self.updated_map_1 = false;
         self.updated_map_2 = false;
-    }
+    }*/
 }
 
 pub struct Video {
@@ -328,9 +325,9 @@ impl Video {
             ram: RefCell::new(VideoRam {
                 vram: [0; 0x2000],
                 //tiles: [[0; 8 * 8]; 0x180],
-                updated_map_1: false,
-                updated_map_2: false,
-                updated_tiles: false,
+                //updated_map_1: false,
+                //updated_map_2: false,
+                //updated_tiles: false,
             }),
             reg: RefCell::new(VideoRegisters {
                 //                        line_clock: 0,
@@ -395,8 +392,7 @@ impl Video {
         drop(lock);
         ret
     }
-    /*
-       fn draw_window(&mut self) -> [WindowPixel; 160] {
+    /*  fn draw_window(&mut self) -> [WindowPixel; 160] {
            let mut out_line = [WindowPixel {
                transparent: true,
                color: 0,
@@ -693,7 +689,12 @@ impl Video {
 
     pub fn write_oam(&self, a: u16, v: u8) {
         self.try_get_oam().map_or_else(
-            || debug!("##########################Tried to write to oam in mode2 or mode3"),
+            || {
+                debug!(
+                    "##########################Tried to write to oam in mode2 or mode3 {:X} ",
+                    a
+                )
+            },
             |(mut oam, _x)| oam[(a >> 2) as usize].write(a & 0x3, v),
         )
 
@@ -705,6 +706,7 @@ impl Video {
             debug!("##########################Tried to write to oam in mode2 or mode3");
         }*/
     }
+    /*
     pub fn write_vram(&self, a: u16, v: u8) {
         self.try_get_ram().map_or_else(
             || {
@@ -724,6 +726,14 @@ impl Video {
             },
             |(vram, _x)| vram.vram[a as usize],
         )
+    }*/
+    pub fn write_vram(&self, a: u16, v: u8) {
+        self.with_ram(|mut vram| {
+            vram.vram[a as usize] = v;
+        })
+    }
+    pub fn read_vram(&self, a: u16) -> u8 {
+        self.with_ram(|vram| vram.vram[a as usize])
     }
 
     pub fn read_register(&self, a: u16) -> u8 {

@@ -10,8 +10,8 @@ use cortex_m::{
     prelude::{_embedded_hal_blocking_spi_Write, _embedded_hal_spi_FullDuplex},
 };
 
-use cortex_m_rt::entry;
-use defmt::*;
+//use cortex_m_rt::entry;
+use defmt::{assert, debug, info, Format};
 use defmt_rtt as _;
 use embedded_hal::digital::v2::{InputPin, OutputPin, StatefulOutputPin};
 use nb::block;
@@ -23,15 +23,16 @@ use rp_pico as bsp;
 // use sparkfun_pro_micro_rp2040 as bsp;
 
 use bsp::{
+    entry,
     hal::{
         clocks::init_clocks_and_plls,
-        gpio::{pin::FunctionSpi, Floating, Input},
+        gpio::{pin::FunctionSpi, Floating, Input, bank0, PullUp, self},
         multicore::{Multicore, Stack},
         pac,
         sio::Sio,
         watchdog::Watchdog,
     },
-    pac::{Peripherals, XIP_CTRL},
+    pac::{Peripherals, DMA, XIP_CTRL},
 };
 use pac::interrupt;
 
@@ -44,6 +45,8 @@ use cpu::{
 };
 use display::Display;
 //use std::io::*;
+
+const DEBUG_VIDEO: bool = true;
 
 #[derive(Debug, Format)]
 pub enum EmuKeys {
@@ -120,6 +123,8 @@ struct Gameboy {
     running: bool,
 }
 
+const CPU_HEARTBEAT:bool = false;
+
 impl Gameboy {
     fn origin(cart: cpu::cartridge::Cartridge, video: &'static RefCell<io::Video>) -> Gameboy {
         Gameboy {
@@ -133,41 +138,45 @@ impl Gameboy {
     fn main_loop(&mut self, mut fifo: bsp::hal::sio::SioFifo, mut syst: SYST, mut xip: XIP_CTRL) {
         //info!("MAIN CPU LOOP");
         //debug!("debug mode ON");
-        let mut clock = 0 as u32;
+        let mut clock = 0u32;
         let mut cpu_wait = 0;
         let mut _buffer_index = 0;
         let mut halted = false;
         let mut display_sync = false;
         let mut cpu_sync: u32 = 0;
-        syst.set_reload(0x00ffffff);
-        syst.set_clock_source(cortex_m::peripheral::syst::SystClkSource::External);
-        syst.clear_current();
-        syst.enable_counter();
-        xip.ctr_acc.reset();
-        xip.ctr_hit.reset();
-
+        if CPU_HEARTBEAT{
+            syst.set_reload(0x00ffffff);
+            syst.set_clock_source(cortex_m::peripheral::syst::SystClkSource::Core);
+            syst.clear_current();
+            syst.enable_counter();
+            xip.ctr_acc.reset();
+            xip.ctr_hit.reset();
+        }
         let mut instr = [0u16; 32];
-        loop {
+        'run: loop {
             //            if self.running == false {
             //                break;
             //            }
             clock = clock.wrapping_add(1);
-            if clock % 0x100000 == 0 {
-                let val = SYST::get_current() / 125;
-                info!(
-                    "{:04x}RUNNNING FOR {} us or {} Mhz Sync is {} {} {} cache {} {}",
-                    self.reg.pc,
-                    val * 10,
-                    1 as f32 / (val as f32 / 100000f32),
-                    display_sync,
-                    cpu_sync,
-                    cpu_wait,
-                    xip.ctr_hit.read().bits(),
-                    xip.ctr_acc.read().bits()
-                );
-                syst.clear_current();
-                xip.ctr_acc.reset();
-                xip.ctr_hit.reset();
+            if CPU_HEARTBEAT{
+                if clock % 0x10000 == 0 {
+                    let val = 0x00ffffff - SYST::get_current();
+                    info!(
+                        "{:04x}RUNNNING FOR {} us {} cpu clock per gb clock. Sync is {} {} {} cache {} {}",
+                        self.reg.pc,
+                        val as f32 / 125.0,
+                        (val as f32 / 10000f32),
+                        
+                        display_sync,
+                        cpu_sync,
+                        cpu_wait,
+                        xip.ctr_hit.read().bits(),
+                        xip.ctr_acc.read().bits()
+                    );
+                    syst.clear_current();
+                    xip.ctr_acc.reset();
+                    xip.ctr_hit.reset();
+                }
             }
             /*instr[clock as usize % 32] = self.reg.pc;
             if self.reg.pc == 0x97 {
@@ -186,7 +195,8 @@ impl Gameboy {
                             halted = true;
                         }
                         CpuState::Stop => {
-                            defmt::panic!("Stop unimplemented, unsure what it should do");
+                            debug!("Stop called, CPU stop running");
+                            break 'run;
                         }
                     }
                 }
@@ -244,11 +254,11 @@ impl Gameboy {
                     }
                     Ipc::VBlank(inter) => {
                         cpu_sync += 4560 / 4;
+                        let mut ret = self.ram.interrupt.add_interrupt(&io::Interrupt::VBlank);
                         if inter {
-                            self.ram.interrupt.add_interrupt(&io::Interrupt::VBlank)
-                        } else {
-                            false
+                            ret |= self.ram.interrupt.add_interrupt(&io::Interrupt::LcdcStatus);
                         }
+                        ret
                     }
                     Ipc::LycCoincidence => {
                         self.ram.interrupt.add_interrupt(&io::Interrupt::LcdcStatus)
@@ -265,7 +275,7 @@ impl Gameboy {
             }
 
             if interrupted {
-                info!("Interrupted");
+                //info!("Interrupted");
                 halted = false;
             }
             /*match i_audio {
@@ -287,18 +297,35 @@ impl Gameboy {
             };*/
         }
         info!("stopped at pc = {:04x}", self.reg.pc);
+        loop {
+            fifo.read();
+        }
     }
 }
 static mut CORE1_STACK: Stack<4096> = Stack::new();
 
 static mut VIDEO: RefCell<Video> = RefCell::new(Video::origin());
+
 static mut DISPLAY: Option<
-    Display<bsp::hal::gpio::bank0::Gpio17, bsp::hal::gpio::bank0::Gpio16, bsp::pac::SPI0>,
+    Display</*bsp::hal::gpio::bank0::Gpio17, */ bsp::hal::gpio::bank0::Gpio16, bsp::pac::SPI0>,
 > = None;
+
 static mut LCD_TE: Option<bsp::hal::gpio::Pin<bsp::hal::gpio::bank0::Gpio21, Input<Floating>>> =
     None;
 
+static mut KEYS: Option<(gpio::Pin<bank0::Gpio12,Input<PullUp>>,
+    gpio::Pin<bank0::Gpio13,Input<PullUp>>,
+    gpio::Pin<bank0::Gpio14,Input<PullUp>>,
+    gpio::Pin<bank0::Gpio15,Input<PullUp>>)> = None;
+
 static mut GB: Option<Gameboy> = None;
+
+fn read_keys()->u8{
+    let (key_a, key_b, key_left, key_right) = unsafe{KEYS.as_ref().expect("keys not initialized")};
+    io::bit_merge(key_a.is_high().unwrap(), key_b.is_high().unwrap(), true, key_a.is_high().unwrap()&&key_b.is_high().unwrap(), key_right.is_high().unwrap(), key_left.is_high().unwrap(), true, true)
+}
+
+
 
 fn display_start() {
     let lcd_te = unsafe { LCD_TE.as_ref().expect("lcd_te not initialized") };
@@ -310,7 +337,7 @@ fn display_start() {
     display.send_command(0x36, &[0x70]);
     display.send_command(0x3A, &[0x03]);
     display.data_command.set_low().unwrap();
-    display.chip_select.set_low().unwrap();
+    //display.chip_select.set_low().unwrap();
     display.spi.write(&[0x2C]).unwrap();
     display.data_command.set_high().unwrap();
 }
@@ -336,36 +363,50 @@ fn display_four_pixels(l: u8, column: u8, data: [u8; 6]) {
     display.fill_buffer(0x3C, &data);
 }
 
-static set_cs_pin: u32 = 1 << 17;
-static CTRL: u32 = (1 << 21) + 0 + 0 + 0 + (1 << 4) + 0x0 + 0b11;
 
-static mut DISPLAY_DMA: [u32; 12] = unsafe {
-    [
-        0,
-        0x4003c000u32 + 0x8, // SPI0 + SSPDR
-        240,
-        CTRL + (16 << 15),
-        0,
-        0xd0000000u32 + 0x1Cu32, // SIO + GPIO_OUT_XOR
-        1,
-        CTRL + (0x2 << 2),
-        0,
-        0,
-        0,
-        0,
-    ]
-};
+#[derive(Default)]
+pub struct ConfigBuilder {
+    pub sniff_enable: bool,
+    pub bswap: bool,
+    pub irq_quiet: bool,
+    pub treq_sel: u8,
+    pub chain_to: u8,
+    pub ring_sel: bool,
+    pub ring_size: u8,
+    pub incr_write: bool,
+    pub incr_read: bool,
+    pub data_size: u8,
+    pub high_priority: bool,
+    pub enable: bool,
+}
+
+impl ConfigBuilder {
+    pub fn encode(&self) -> u32 {
+        assert!(self.treq_sel < 0b1000000);
+        assert!(self.chain_to < 0b10000);
+        assert!(self.ring_size < 0b10000);
+        assert!(self.data_size < 0b100);
+        ((self.sniff_enable as u32) << 23)
+            | ((self.bswap as u32) << 22)
+            | ((self.irq_quiet as u32) << 21)
+            | ((self.treq_sel as u32) << 15)
+            | ((self.chain_to as u32) << 11)
+            | ((self.ring_sel as u32) << 10)
+            | ((self.ring_size as u32) << 6)
+            | ((self.incr_write as u32) << 5)
+            | ((self.incr_read as u32) << 4)
+            | ((self.data_size as u32) << 2)
+            | ((self.high_priority as u32) << 1)
+            | (self.enable as u32)
+    }
+}
 
 fn display_dma_line(l: u8, flags: [u8; 4], line: &[u8; 240]) {
     cortex_m::interrupt::free(|_| unsafe {
         // Now interrupts are disabled
 
         let mut display = unsafe { DISPLAY.as_mut().expect("display not initialized") };
-        //while display.chip_select.is_set_low().unwrap() {
-        //    info!("wait")
-        // }
-        DISPLAY_DMA[0] = line.as_ptr() as u32;
-        DISPLAY_DMA[4] = core::ptr::addr_of!(set_cs_pin) as u32;
+
 
         unsafe {
             let CH0_READ_ADDR = bsp::pac::DMA::PTR.cast::<u32>().offset(0x00) as *mut u32;
@@ -373,39 +414,47 @@ fn display_dma_line(l: u8, flags: [u8; 4], line: &[u8; 240]) {
             let CH0_TRANS_COUNT = bsp::pac::DMA::PTR.cast::<u32>().offset(0x02) as *mut u32;
             let CH0_CTRL_TRIG = bsp::pac::DMA::PTR.cast::<u32>().offset(0x03) as *mut u32;
             let CH1_START = bsp::pac::DMA::PTR.cast::<u32>().offset(0x40 / 4) as *mut u32;
-            let to_write = (1 << 10) + (0x2 << 6) + (1 << 5) + (1 << 4) + (0x2 << 2) + 0b11;
+            let to_write = ConfigBuilder {
+                treq_sel: 16,
+                irq_quiet: true,
+                incr_read: true,
+                data_size: 0x0,
+                enable: true,
+                ..Default::default()
+            };
+            let to_write = to_write.encode();
+            //let to_write = (1 << 10) + (0x2 << 6) + (1 << 5) + (1 << 4) + (0x2 << 2) + 0b11;
 
-            /*
-                        //SSPDMACR.TXDMAE = 1
+            //SSPDMACR.TXDMAE = 1
 
-                        core::ptr::write_volatile(CH0_READ_ADDR, line.as_ptr() as u32);
-                        core::ptr::write_volatile(
-                            CH0_WRITE_ADDR,
-                            pac::SPI0::PTR.cast::<u32>().offset(0x2) as u32,
-                        );
-                        core::ptr::write_volatile(CH0_TRANS_COUNT, 240);
+            core::ptr::write_volatile(CH0_READ_ADDR, line.as_ptr() as u32);
+            core::ptr::write_volatile(
+                CH0_WRITE_ADDR,
+                pac::SPI0::PTR.cast::<u32>().offset(0x2) as u32 + 3,
+            );
+            core::ptr::write_volatile(CH0_TRANS_COUNT, 240);
+
+            /*core::ptr::write_volatile(CH0_READ_ADDR, core::ptr::addr_of!(DISPLAY_DMA) as u32);
+                        core::ptr::write_volatile(CH0_WRITE_ADDR, CH1_START as u32);
+                        core::ptr::write_volatile(CH0_TRANS_COUNT, 4);
             */
-            core::ptr::write_volatile(CH0_READ_ADDR, core::ptr::addr_of!(DISPLAY_DMA) as u32);
-            core::ptr::write_volatile(CH0_WRITE_ADDR, CH1_START as u32);
-            core::ptr::write_volatile(CH0_TRANS_COUNT, 4);
+            if l == 0 {
+                display.send_command(0x2A, &[0x00, 80, 0x00, 80 + 160 - 1]);
+                display.send_command(0x2B, &[0x00, 40, 0x00, 40 + 144 - 1]);
+                display.send_command(0x36, &[0x70]);
+                display.send_command(0x3A, &[0x03]);
+                cortex_m::asm::delay(8 * 8 * 2 * 2); //8 level buffer, 8 bits, 2 cpu clocks per bit, 2 to be sure;
 
-            //if l == 0 {
-            display.send_command(0x2A, &[0x00, 80, 0x00, 80 + 160 - 1]);
-            display.send_command(0x2B, &[0x00, 40 + l, 0x00, 40 + l]);
-            display.send_command(0x36, &[0x70]);
-            display.send_command(0x3A, &[0x03]);
-            cortex_m::asm::delay(8 * 8 * 2 * 2); //8 level buffer, 8 bits, 2 cpu clocks per bit, 2 to be sure;
-
-            display.data_command.set_low().unwrap();
-            display.chip_select.set_low().unwrap();
-            display.spi.write(&[0x2C]).unwrap();
-            display.data_command.set_high().unwrap();
-            /* } else {
                 display.data_command.set_low().unwrap();
-                display.chip_select.set_low().unwrap();
+                //      display.chip_select.set_low().unwrap();
+                display.spi.write(&[0x2C]).unwrap();
+                display.data_command.set_high().unwrap();
+            } else {
+                display.data_command.set_low().unwrap();
+                //display.chip_select.set_low().unwrap();
                 display.spi.write(&[0x3C]).unwrap();
                 display.data_command.set_high().unwrap();
-            }*/
+            }
             /*
             let INTS0 = pac::DMA::PTR.cast::<u32>().offset(0x40C / 4) as *mut u32;
 
@@ -437,12 +486,12 @@ fn display_line(l: u8, flags: [u8; 4], line: &[u8; 240]) {
         cortex_m::asm::delay(8 * 8 * 2 * 2); //8 level buffer, 8 bits, 2 cpu clocks per bit, 2 to be sure;
 
         display.data_command.set_low().unwrap();
-        display.chip_select.set_low().unwrap();
+        //display.chip_select.set_low().unwrap();
         display.spi.write(&[0x2C]).unwrap();
         display.data_command.set_high().unwrap();
     } else {
         display.data_command.set_low().unwrap();
-        display.chip_select.set_low().unwrap();
+        //display.chip_select.set_low().unwrap();
         display.spi.write(&[0x3C]).unwrap();
         display.data_command.set_high().unwrap();
     }
@@ -472,7 +521,7 @@ fn display_line(l: u8, flags: [u8; 4], line: &[u8; 240]) {
     }
 
     //while unsafe { pac::SPI0::PTR.cast::<u8>().offset(0xc).read() } & (1 << 4) != 0 {}
-    display.chip_select.set_high().unwrap();
+    //display.chip_select.set_high().unwrap();
     /*display.data_command.set_low().unwrap();
     display.chip_select.set_low().unwrap();
     cortex_m::asm::delay(2); //8 level buffer, 8 bits, 2 cpu clocks per bit, 2 to be sure;
@@ -506,7 +555,7 @@ fn display_end() {
         _ = display.spi.read();
     }
 
-    display.chip_select.set_high().unwrap();
+    //display.chip_select.set_high().unwrap();
 }
 
 fn display_fill(a: u8, b: u8) {
@@ -523,7 +572,7 @@ fn display_fill(a: u8, b: u8) {
     cortex_m::asm::delay(8 * 8 * 2 * 2); //8 level buffer, 8 bits, 2 cpu clocks per bit, 2 to be sure;
 
     display.data_command.set_low().unwrap();
-    display.chip_select.set_low().unwrap();
+    //display.chip_select.set_low().unwrap();
     display.spi.write(&[0x2C]).unwrap();
     display.data_command.set_high().unwrap();
     for _ in 0..240 * 320 {
@@ -533,7 +582,7 @@ fn display_fill(a: u8, b: u8) {
         block!(display.spi.send(b)).unwrap();
     }
     cortex_m::asm::delay(8 * 8 * 2 * 2); //8 level buffer, 8 bits, 2 cpu clocks per bit, 2 to be sure;
-    display.chip_select.set_high().unwrap();
+                                         //display.chip_select.set_high().unwrap();
 }
 
 fn emulator_loop() -> ! {
@@ -569,22 +618,33 @@ fn display_loop() -> ! {
         */
     let sys_freq = 125_000_000; //sio.fifo.read_blocking();
     let ms = sys_freq / 1000;
-    let mut delay = cortex_m::delay::Delay::new(core.SYST, sys_freq);
+    //let mut delay = cortex_m::delay::Delay::new(core.SYST, sys_freq);
     let _ = pins.gpio18.into_mode::<FunctionSpi>();
     let _ = pins.gpio19.into_mode::<FunctionSpi>();
+    let _ = pins.gpio17.into_mode::<FunctionSpi>();
+
+    unsafe{
+        KEYS = Some((pins.gpio12.into_pull_up_input(),
+        pins.gpio13.into_pull_up_input(),
+        pins.gpio14.into_pull_up_input(),
+        pins.gpio15.into_pull_up_input()));
+    }
+
     let mut display = Display::new(
         pac.SPI0,
-        pins.gpio17.into_push_pull_output(),
+        //pins.gpio17.into_push_pull_output(),
         pins.gpio16.into_push_pull_output(),
         &mut pac.RESETS,
     );
 
     let lcd_te = pins.gpio21.into_floating_input();
     display.send_command(0x01, &[]);
-    delay.delay_ms(150);
+    cortex_m::asm::delay(150 * ms);
+
     display.init();
     let mut backlight = pins.gpio20.into_push_pull_output();
-    delay.delay_ms(100);
+    cortex_m::asm::delay(100 * ms);
+
     backlight.set_high().unwrap();
 
     unsafe {
@@ -620,21 +680,20 @@ fn display_loop() -> ! {
         renderer::embedded_loop(
             ms,
             &mut sio.fifo,
+            &mut sio.interp0,
+            &mut sio.interp1,
             pac.PIO0,
+            pac.PIO1,
             &mut pac.RESETS,
             &VIDEO,
-            display_wait_sync,
-            display_line,
-            display_four_pixels,
-            display_push_byte,
-            display_end,
+            core.SYST,
         );
     };
     loop {}
 }
 
 #[rustfmt::skip]
-static ALPHA :[u8;32] = [
+static ALPHA :[u8;64] = [
     0b00000000,
     0b00011100,
     0b00111110,
@@ -670,9 +729,45 @@ static ALPHA :[u8;32] = [
     0b00111100,
     0b00000000,
     0b00000000,
+
+    0b00000000,
+    0b00000001,
+    0b00000011,
+    0b00000111,
+    0b00001111,
+    0b00011111,
+    0b00111111,
+    0b01111111,
+
+    0b11111110,
+    0b11111100,
+    0b11111000,
+    0b11110000,
+    0b11100000,
+    0b11000000,
+    0b10000000,
+    0b00000000,
+    
+    0b11111111,
+    0b01111111,
+    0b00111111,
+    0b00011111,
+    0b00001111,
+    0b00000111,
+    0b00000011,
+    0b00000001,
+
+    0b10000000,
+    0b11000000,
+    0b11100000,
+    0b11110000,
+    0b11111000,
+    0b11111100,
+    0b11111110,
+    0b11111111,
 ];
 
-#[entry]
+#[entry] // Warning must call your board entry, rp2040 entry not directly cortex entry
 fn main() -> ! {
     //let args: Vec<String> = std::env::args().collect();
     info!("Program start {}", rp_pico::hal::sio::spinlock_state());
@@ -680,12 +775,12 @@ fn main() -> ! {
     let mut sio = Sio::new(pac.SIO);
     let mut watchdog = Watchdog::new(pac.WATCHDOG);
 
-    unsafe {
+    /*unsafe {
         // Seems like spinlocks are not cleared on startup;
         bsp::hal::sio::Spinlock3::release();
         bsp::hal::sio::Spinlock4::release();
         bsp::hal::sio::Spinlock5::release();
-    }
+    }*/
     // External high-speed crystal on the pico board is 12Mhz
     let external_xtal_freq_hz = 12_000_000u32;
     let clocks = init_clocks_and_plls(
@@ -699,7 +794,7 @@ fn main() -> ! {
     )
     .ok()
     .unwrap();
-    pac::NVIC::mask(bsp::hal::pac::Interrupt::DMA_IRQ_0);
+    //pac::NVIC::mask(bsp::hal::pac::Interrupt::DMA_IRQ_0);
 
     let mut mc = Multicore::new(&mut pac.PSM, &mut pac.PPB, &mut sio.fifo);
 
@@ -717,54 +812,69 @@ fn main() -> ! {
     let cart = cpu::cartridge::Cartridge::default().setup();
     cart.extract_info();
     info!(
-        "cart at {:x} with size {}",
+        "cart at {:x} with size {:x}",
         (&cart) as *const cpu::cartridge::Cartridge,
         mem::size_of::<cpu::cartridge::Cartridge>()
     );
     info!(
-        "VIDEO at {:x} with size {}",
+        "VIDEO at {:x} with size {:x}",
         unsafe { (VIDEO.as_ptr()) },
         mem::size_of::<Video>()
     );
     info!("Stack at {:x}", unsafe {
         (&CORE1_STACK) as *const Stack<4096>
     });
-    /*
-    let vid = unsafe { VIDEO.borrow() };
-    vid.with_ram(|mut ram| {
-        let size = ram.vram.len();
-        for (i, v) in ALPHA.iter().enumerate() {
-            ram.vram[i * 2] = *v;
-            ram.vram[i * 2 + 1] = *v;
+    if DEBUG_VIDEO {
+        let vid = unsafe { VIDEO.borrow() };
+        vid.with_ram(|mut ram| {
+            let size = ram.vram.len();
+            for (i, v) in ALPHA.iter().enumerate() {
+                ram.vram[i * 2] = *v;
+                ram.vram[i * 2 + 1] = *v;
+            }
+            for i in (ALPHA.len() * 2)..0x1800 {
+                ram.vram[i] = 0x55;
+            }
+            for i in (0x1800..0x2000).step_by(ALPHA.len() / 8) {
+                for j in 0..(ALPHA.len() / 8) {
+                    ram.vram[i + j] = j as u8;
+                }
+            }
+            ram.vram[0x1800] = 7;
+        });
+        vid.with_oam(|mut oam|{
+            oam[0].tile = 4;
+            oam[1].tile = 7;
+            oam[2].tile = 6;
+            oam[3].tile = 5;
+            
+            oam[1].x = 8;
+            oam[2].y = 8;
+            oam[3].x = 8;
+            oam[3].y = 8;
+            
+        });
+        vid.with_reg(|mut reg| {
+            reg.enable_lcd = true;
+            reg.enable_background = true;
+            reg.tile_set = true;
+            reg.background_tile_map = false;
+            reg.enable_sprites = true;
+            reg.write_sprite_palette_0(0b11100100);
+            reg.write_background_palette(0b11100100);
+        });
+        drop(vid);
+    } else {
+        let mut gb = Gameboy::origin(cart, unsafe { &VIDEO });
+        info!(
+            "gb at {:x} with size {}",
+            (&gb) as *const Gameboy,
+            mem::size_of::<Gameboy>()
+        );
+        unsafe {
+            GB = Some(gb);
         }
-        for i in (ALPHA.len() * 2)..0x1800 {
-            ram.vram[i] = 0x55;
-        }
-        for i in (0x1800..0x2000).step_by(4) {
-            ram.vram[i] = 0;
-            ram.vram[i + 1] = 1;
-            ram.vram[i + 2] = 2;
-            ram.vram[i + 3] = 3;
-        }
-    });
-    vid.with_reg(|mut reg| {
-        reg.enable_lcd = true;
-        reg.enable_background = true;
-        reg.tile_set = true;
-        reg.background_tile_map = false;
-        reg.write_background_palette(0b11100100);
-    });
-    drop(vid);*/
-    let mut gb = Gameboy::origin(cart, unsafe { &VIDEO });
-    info!(
-        "gb at {:x} with size {}",
-        (&gb) as *const Gameboy,
-        mem::size_of::<Gameboy>()
-    );
-    unsafe {
-        GB = Some(gb);
     }
-
     let _thread = core1.spawn(unsafe { &mut CORE1_STACK.mem }, display_loop);
     //let sys_freq = clocks.system_clock.freq().integer();
 
@@ -772,14 +882,51 @@ fn main() -> ! {
 
     //sio.fifo.write_blocking(sys_freq);
     //info!("blocking");
-    _ = sio.fifo.read_blocking();
-    //info!("unblocked");
-    let mut gb = unsafe { GB.as_mut().expect("GB is not initialized") };
 
-    watchdog.enable_tick_generation(bsp::XOSC_CRYSTAL_FREQ as u8);
-    gb.main_loop(sio.fifo, core.SYST, pac.XIP_CTRL);
-    loop {
-        //sio.fifo.read();
+    if DEBUG_VIDEO {
+        let video = unsafe{VIDEO.borrow()};
+        let mut x_dir:i16 = 1;
+        let mut y_dir:i16 = 1;
+        loop { 
+            match Ipc::from_bits( sio.fifo.read_blocking()){
+                Ipc::VBlank(_) =>{
+                    let (x,y) = 
+                    video.with_oam(|mut oam|{
+                        if oam[0].x <= 8 {
+                            x_dir = 1
+                        }else if oam[3].x > 160 {
+                            x_dir = -1;
+                        }
+                        if oam[0].y <= 8{
+                            y_dir = 1;
+                        }else if oam[3].y > 144 
+                        { y_dir = -1}
+                        for mut i in & mut oam[0..4]{
+                            i.x = (i.x as i16 + x_dir) as u8;
+                            i.y = (i.y as i16 + y_dir) as u8;
+                        }
+                        (oam[0].x,oam[0].y)
+                    });
+                    info!("sprites at {}:{}",x,y);
+                }
+                Ipc::Key(x)=>{
+                    if x == 0xff{
+                        video.with_reg(|mut reg| reg.enable_sprites = true)
+                    }else{
+                        video.with_reg(|mut reg| reg.enable_sprites = false)
+                    }
+                }
+                _ =>{}
+        }
+        }
+    } else {
+        _ = sio.fifo.read_blocking();
+        //info!("unblocked");
+        let mut gb = unsafe { GB.as_mut().expect("GB is not initialized") };
+
+        watchdog.enable_tick_generation(bsp::XOSC_CRYSTAL_FREQ as u8);
+        gb.main_loop(sio.fifo, core.SYST, pac.XIP_CTRL);
+        loop {}
     }
     //    let _thread = core1.spawn(emulator_loop, unsafe { &mut CORE1_STACK.mem });
     //    display_loop();
@@ -794,7 +941,7 @@ fn DMA_IRQ_0() {
 
     //cortex_m::asm::delay(8 * 8 * 2 * 2); //8 level buffer, 8 bits, 2 cpu clocks per bit, 2 to be sure;
 
-    display.chip_select.set_high().unwrap();
+    // display.chip_select.set_high().unwrap();
     unsafe {
         let INTS0 = pac::DMA::PTR.cast::<u32>().offset(0x40C / 4) as *mut u32;
 

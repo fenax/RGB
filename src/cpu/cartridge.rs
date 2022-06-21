@@ -49,8 +49,8 @@ impl Default for Cartridge {
             has_rumble: false,
             has_sensor: false,
             //            rom: [0; 0x4000],
-            //fullrom: include_bytes!("../../../Downloads/cpu_instrs.gb"),
-            fullrom: include_bytes!("../../../Zelda.gb"),
+            //fullrom: include_bytes!("../../../Downloads/01-special.gb"),
+            fullrom: include_bytes!("../../../Tetris.gb"),
             ramswitch: [[0; 0x2000]; 1],
             cur_ram: 0,
             cur_rom: 0,
@@ -193,11 +193,12 @@ impl Cartridge {
     }*/
     pub fn set_rom_bank(&mut self, b: u8) {
         self.cur_rom = (core::cmp::max(b, 1)) as usize;
+        info!("set rombank to {}", self.cur_rom);
         //TODO suport bigger rom
     }
     pub fn read_romswitch(&self, a: u16) -> u8 {
         //println!("read from romswitch {} :{:02x}",self.cur_rom,a);
-        self.fullrom[self.cur_rom * 0x4000 + a as usize]
+        self.fullrom[(self.cur_rom * 0x4000) + a as usize]
     }
     pub fn read_ramswitch(&self, a: u16) -> u8 {
         self.ramswitch[self.cur_ram][a as usize]
