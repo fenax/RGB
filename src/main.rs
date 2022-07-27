@@ -216,12 +216,12 @@ impl Gameboy {
             ram::io::InterruptManager::step(&mut self.ram, clock);
 
             let mut interrupted = false;
-            interrupted = interrupted || self.ram.interrupt.add_interrupt(&i_joypad);
-            interrupted = interrupted || self.ram.interrupt.add_interrupt(&i_serial);
-            interrupted = interrupted || self.ram.interrupt.add_interrupt(&i_timer);
-            interrupted = interrupted || self.ram.interrupt.add_interrupt(&i_dma);
-            interrupted = interrupted || self.ram.interrupt.add_interrupt(&i_video.0);
-            interrupted = interrupted || self.ram.interrupt.add_interrupt(&i_video.1);
+            interrupted = self.ram.interrupt.add_interrupt(&i_joypad) || interrupted;
+            interrupted = self.ram.interrupt.add_interrupt(&i_serial) || interrupted;
+            interrupted = self.ram.interrupt.add_interrupt(&i_timer) || interrupted;
+            interrupted = self.ram.interrupt.add_interrupt(&i_dma) || interrupted;
+            interrupted = self.ram.interrupt.add_interrupt(&i_video.0) || interrupted;
+            interrupted = self.ram.interrupt.add_interrupt(&i_video.1) || interrupted;
             if interrupted{
                 halted = false;
             }

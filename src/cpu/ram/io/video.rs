@@ -526,13 +526,13 @@ impl Video {
         bit_merge(
             false,
             false,
-            false,
+            self.line_compare == self.line,
             self.enable_mode_0_hblank_check,
             self.enable_mode_1_vblank_check,
             self.enable_mode_2_oam_check,
             self.enable_ly_lcy_check,
             true,
-        ) + self.get_video_mode() + if self.line_compare == self.line {1<<3}else{0}
+        ) + self.get_video_mode()
     }
 
     pub fn write_scroll_y(&mut self, v: u8) {
