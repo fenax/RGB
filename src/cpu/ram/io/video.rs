@@ -2,6 +2,7 @@ use crate::cpu::ram::io::*;
 use core::cell::RefCell;
 use core::cell::RefMut;
 use core::cmp::Ordering;
+use core::intrinsics::transmute;
 use defmt::debug;
 use rp_pico::hal::sio::Spinlock3 as RegLock;
 use rp_pico::hal::sio::Spinlock4 as OamLock;
@@ -75,6 +76,7 @@ impl Sprite {
     }
 }
 
+#[repr(C)]
 pub struct VideoRam {
     pub vram: [u8; 0x2000],
     //tiles: [[u16; 8]; 0x180],
@@ -314,7 +316,7 @@ pub struct Video {
     //pub back_buffer: [u8; 144 * 160],
     oam: RefCell<[Sprite; 40]>,
     reg: RefCell<VideoRegisters>,
-    ram: RefCell<VideoRam>,
+    //ram: RefCell<VideoRam>,
 }
 
 impl Video {
@@ -322,13 +324,13 @@ impl Video {
         Video {
             oam: RefCell::new([Sprite::origin(); 40]),
             //            back_buffer: [0; 144 * 160],
-            ram: RefCell::new(VideoRam {
+            /*ram: RefCell::new(VideoRam {
                 vram: [0; 0x2000],
                 //tiles: [[0; 8 * 8]; 0x180],
                 //updated_map_1: false,
                 //updated_map_2: false,
                 //updated_tiles: false,
-            }),
+            }),*/
             reg: RefCell::new(VideoRegisters {
                 //                        line_clock: 0,
                 line: 0,
@@ -383,12 +385,13 @@ impl Video {
         drop(lock);
         ret
     }
-    pub(crate) fn try_get_ram(&self) -> Option<(RefMut<'_, VideoRam>, VramLock)> {
-        VramLock::try_claim().map(|x| (self.ram.borrow_mut(), x))
+    pub(crate) fn try_get_ram(&self) -> Option<(&mut VideoRam, VramLock)> {
+        VramLock::try_claim().map(|x| (unsafe { transmute(crate::VRAM) }, x))
     }
-    pub(crate) fn with_ram<R>(&self, f: impl FnOnce(RefMut<'_, VideoRam>) -> R) -> R {
+    pub(crate) fn with_ram<R>(&self, f: impl FnOnce(&mut VideoRam) -> R) -> R {
         let lock = VramLock::claim();
-        let ret = f(self.ram.borrow_mut());
+        let ret = f(unsafe { transmute(crate::VRAM) });
+        //let ret = f(self.ram.borrow_mut());
         drop(lock);
         ret
     }

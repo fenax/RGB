@@ -4,7 +4,16 @@
 #![no_std]
 #![no_main]
 
-use core::{cell::RefCell, mem};
+/*
+High Ram layout:
+ 0x20040000 - 0x20042000 VRAM
+*/
+extern crate static_assertions as sa;
+
+const VRAM: *const VideoRam = (0x20040000 as *const VideoRam);
+
+
+use core::{cell::RefCell, mem, marker::PhantomData};
 use cortex_m::{
     peripheral::SYST,
     prelude::{_embedded_hal_blocking_spi_Write, _embedded_hal_spi_FullDuplex},
@@ -16,7 +25,7 @@ use defmt_rtt as _;
 use embedded_hal::digital::v2::{InputPin, OutputPin, StatefulOutputPin};
 use nb::block;
 use panic_probe as _;
-
+use paste;
 // Provide an alias for our BSP so we can switch targets quickly.
 // Uncomment the BSP you included in Cargo.toml, the rest of the code does not need to change.
 use rp_pico as bsp;
@@ -32,7 +41,7 @@ use bsp::{
         sio::Sio,
         watchdog::Watchdog,
     },
-    pac::{Peripherals, DMA, XIP_CTRL},
+    pac::{Peripherals, DMA, XIP_CTRL, dma::CH},
 };
 use pac::interrupt;
 
@@ -40,13 +49,13 @@ mod cpu;
 mod display;
 mod renderer;
 use cpu::{
-    ram::io::{self, Video},
+    ram::io::{self, Video, video::VideoRam},
     *,
 };
 use display::Display;
 //use std::io::*;
 
-const DEBUG_VIDEO: bool = true;
+const DEBUG_VIDEO: bool = false;
 
 #[derive(Debug, Format)]
 pub enum EmuKeys {
@@ -61,12 +70,85 @@ pub enum EmuKeys {
     Select,
 }
 
-pub union IpcUnion {
-    data: Ipc,
-    bits: u32,
+use bsp::hal::sio::SioFifo;
+/* 
+struct StructuredFifo<const SourceCore: u8>{
+    fifo:SioFifo,
 }
+
+impl<const SourceCore: u8> StructuredFifo<SourceCore>{
+    fn new(fifo: SioFifo)->StructuredFifo<SourceCore>{
+        debug_assert!(SourceCore == Sio::core(),"StructuredFifo instantiated on the wrong core");
+        StructuredFifo { fifo }
+    }
+}*/
+
+trait StructuredFifo<const SourceCore: u8,R,T>
+where
+R: Ipc,
+T: Ipc,
+{
+    fn get_fifo(&mut self)->&mut SioFifo;
+    fn is_read_ready(&mut self)-> bool{
+        self.get_fifo().is_read_ready()
+    }
+    fn write_blocking(&mut self, ipc:T){
+        self.get_fifo().write_blocking(ipc.get_bits());
+    }
+    fn read_blocking(&mut self)->R{
+        R::from_bits(self.get_fifo().read_blocking())
+    }
+}
+
+trait Ipc{
+    fn get_bits(self) -> u32;
+    fn from_bits(bits: u32) -> Self;
+}
+
+
+
+macro_rules! build_structured_fifo {
+    (one $core:literal $union:ident, $fifo_core:ident, $read:ty, $write:ty)=>{
+        $crate::sa::assert_eq_size!($union,u32);
+        pub union $union{
+            data: $write,
+            bits: u32,
+        }
+        pub struct $fifo_core{
+            fifo:SioFifo
+        }
+        impl $fifo_core{
+            fn new(fifo: SioFifo)->Self{
+                debug_assert!($core == Sio::core(),"StructuredFifo instantiated on the wrong core");
+                Self { fifo }
+            }        
+        }
+        impl StructuredFifo<$core,$read,$write> for $fifo_core{
+            fn get_fifo(&mut self)-> &mut SioFifo{
+                & mut self.fifo
+            }
+        }
+        impl Ipc for $write {
+            fn get_bits(self) -> u32 {
+                let u = $union { data: self };
+                unsafe { u.bits }
+            }
+            fn from_bits(bits: u32) -> $write {
+                let u = $union { bits };
+                unsafe { u.data }
+            }
+        }
+    };
+    ($fifo_core0:ident,$fifo_core1:ident,$from_core0:ty,$from_core1:ty) => {
+        build_structured_fifo!(one 0 FifoFromCore0Union, $fifo_core0, $from_core1, $from_core0);
+        build_structured_fifo!(one 1 FifoFromCore1Union, $fifo_core1, $from_core0, $from_core1);
+    };
+}
+
+build_structured_fifo!(FifoCore0,FifoCore1,IpcFromCPU,IpcFromRender);
+
 #[derive(Clone, Copy)]
-pub enum Ipc {
+pub enum IpcFromRender {
     DisplayOn,
     DisplayOff,
     Oam(bool),
@@ -76,22 +158,14 @@ pub enum Ipc {
     Key(u8),
 }
 
-impl Ipc {
-    fn send(self, fifo: &mut bsp::hal::sio::SioFifo) {
-        while !fifo.is_write_ready() {
-            debug!("not ready for writing")
-        }
-        fifo.write_blocking(self.get_bits());
-    }
-    fn get_bits(self) -> u32 {
-        let u = IpcUnion { data: self };
-        unsafe { u.bits }
-    }
-    fn from_bits(bits: u32) -> Ipc {
-        let u = IpcUnion { bits };
-        unsafe { u.data }
-    }
+#[derive(Clone, Copy)]
+pub enum IpcFromCPU{
+    WaitOam,
+    WaitVBlank,
+    WaitHblank,
 }
+
+
 
 #[derive(Debug, Clone, Format)]
 pub enum EmuCommand {
@@ -123,7 +197,11 @@ struct Gameboy {
     running: bool,
 }
 
-const CPU_HEARTBEAT:bool = false;
+const CPU_HEARTBEAT:bool = true;
+const CPU_CLOCKS_OAM:u32 = (80 + 168) / 4;
+const CPU_CLOCKS_HBLANK:u32 = 208/4;
+const CPU_CLOCKS_VBLANK:u32 = 4560/4;
+
 
 impl Gameboy {
     fn origin(cart: cpu::cartridge::Cartridge, video: &'static RefCell<io::Video>) -> Gameboy {
@@ -135,7 +213,7 @@ impl Gameboy {
         }
     }
 
-    fn main_loop(&mut self, mut fifo: bsp::hal::sio::SioFifo, mut syst: SYST, mut xip: XIP_CTRL) {
+    fn main_loop(&mut self, mut fifo: FifoCore0, mut syst: SYST, mut xip: XIP_CTRL) {
         //info!("MAIN CPU LOOP");
         //debug!("debug mode ON");
         let mut clock = 0u32;
@@ -225,45 +303,45 @@ impl Gameboy {
 
             cpu_sync = cpu_sync.saturating_sub(1u32);
             while fifo.is_read_ready() || (display_sync && cpu_sync == 0) {
-                interrupted = match Ipc::from_bits(fifo.read_blocking()) {
-                    Ipc::DisplayOn => {
+                interrupted = match fifo.read_blocking() {
+                    IpcFromRender::DisplayOn => {
                         display_sync = true;
                         cpu_sync = 0;
                         false
                     }
-                    Ipc::DisplayOff => {
+                    IpcFromRender::DisplayOff => {
                         display_sync = false;
                         cpu_sync = 0;
                         false
                     }
-                    Ipc::Oam(inter) => {
-                        cpu_sync += (80 + 168) / 4;
+                    IpcFromRender::Oam(inter) => {
+                        cpu_sync += CPU_CLOCKS_OAM;
                         if inter {
                             self.ram.interrupt.add_interrupt(&io::Interrupt::LcdcStatus)
                         } else {
                             false
                         }
                     }
-                    Ipc::Hblank(inter) => {
-                        cpu_sync += 208 / 4;
+                    IpcFromRender::Hblank(inter) => {
+                        cpu_sync += CPU_CLOCKS_HBLANK;
                         if inter {
                             self.ram.interrupt.add_interrupt(&io::Interrupt::LcdcStatus)
                         } else {
                             false
                         }
                     }
-                    Ipc::VBlank(inter) => {
-                        cpu_sync += 4560 / 4;
+                    IpcFromRender::VBlank(inter) => {
+                        cpu_sync += CPU_CLOCKS_VBLANK;
                         let mut ret = self.ram.interrupt.add_interrupt(&io::Interrupt::VBlank);
                         if inter {
                             ret |= self.ram.interrupt.add_interrupt(&io::Interrupt::LcdcStatus);
                         }
                         ret
                     }
-                    Ipc::LycCoincidence => {
+                    IpcFromRender::LycCoincidence => {
                         self.ram.interrupt.add_interrupt(&io::Interrupt::LcdcStatus)
                     }
-                    Ipc::Key(keys) => {
+                    IpcFromRender::Key(keys) => {
                         let inter = self.ram.joypad.set(keys);
                         if inter {
                             self.ram.interrupt.add_interrupt(&io::Interrupt::Joypad)
@@ -298,7 +376,7 @@ impl Gameboy {
         }
         info!("stopped at pc = {:04x}", self.reg.pc);
         loop {
-            fifo.read();
+            fifo.read_blocking();
         }
     }
 }
@@ -401,6 +479,98 @@ impl ConfigBuilder {
     }
 }
 
+
+pub struct DmaCommand<T>{
+    ctrl:u32,
+    read_address:*const T,
+    write_address:*mut T,
+    count:u32,
+}
+
+impl<T> DmaCommand<T> {
+    pub fn new(config:ConfigBuilder,read_address:*const T,write_address:*mut T,count:u32)->Self{
+        Self { ctrl: config.encode(), read_address, write_address, count }
+    }
+}
+
+
+macro_rules! Nested {
+    (trigger ( [$item:ident , $type:ty, $register:ident] , $([$rest_item:ident,$rest_type:ty,$rest_register:ident]),+ ))=>{
+        $crate::paste::paste!{
+                #[repr(C)]
+            /// The trigger on writing $item
+            pub struct $item{
+                [<$item:lower>]:$type
+            }
+            impl $item{
+                pub fn new([<$item:lower>]:$type) ->Self{
+                    Self{
+                        [<$item:lower>]
+                    }
+                }
+
+                pub unsafe fn write(&self,channel:&pac::dma::CH){
+                    core::ptr::write_volatile(self.get_write_address(channel),self.[<$item:lower>] as u32);
+                }
+
+                pub fn get_write_address(&self,channel:&pac::dma::CH)-> *mut u32{
+                    channel.$register.as_ptr()
+                }
+            }
+            Nested!(add [$item,[<$item:lower>],([<$item:lower>]:$type)], $([$rest_item,$rest_type,$rest_register]),+);
+        }
+    };
+    (add [$suffix:ident,$nested:ident,($($params:ident : $paramtype:ty),+)], [$item:ident, $type:ty, $register:ident])=>{
+        $crate::paste::paste!{
+            /// Structure of $suffix and $item
+            #[repr(C)]
+            pub struct [<$item $suffix>]{
+                [<$item:lower>]:$type,
+                [<$nested>]:$suffix,
+            }//end
+            impl [<$item $suffix>]{
+                pub fn new([<$item:lower>]:$type,$($params : $paramtype),+) ->Self{
+                    Self{
+                        [<$item:lower>],
+                        [<$nested>]: $suffix::new($($params),+)
+                    }
+                }
+
+                pub unsafe fn write(&self,channel:&pac::dma::CH){
+                    core::ptr::write_volatile(self.get_write_address(channel),self.[<$item:lower>] as u32);
+                    self.[<$nested>].write(channel);
+                }
+
+                pub fn get_write_address(&self,channel:&pac::dma::CH)-> *mut u32{
+                    channel.$register.as_ptr()
+                }
+            }
+        }
+    };
+    (add [$suffix:ident,$nested:ident,($($params:ident : $paramtype:ty),+)],  [$item:ident, $type:ty, $register:ident], $($rest:tt),*)=>{
+        $crate::paste::paste!{
+            Nested!(add [$suffix,$nested,($($params : $paramtype),+)] , [$item,$type,$register]);
+            Nested!(add [[<$item $suffix>],[<$item:lower _ $nested>],([<$item:lower>] : $type , $($params : $paramtype),+)] $(, $rest)*);
+        }        
+    };
+    ($( $item:tt),+) => {
+        $crate::paste::paste!{
+            $(
+                Nested!(trigger $item);
+            )+
+        }
+    };
+}
+
+
+
+Nested!(([Ctrl,u32,ch_ctrl_trig],[Count, u32,ch_trans_count],[Write,*mut u8,ch_write_addr],[Read,*const u8,ch_read_addr]),
+        ([Count,u32,ch_al1_trans_count_trig],[Write,*mut u8,ch_al1_write_addr],[Read, *mut u8,ch_al1_read_addr],[Ctrl, u32,ch_al1_ctrl]),
+        ([Write,*mut u8,ch_al2_write_addr_trig],[Read,*const u8,ch_al2_read_addr],[Count,u32,ch_al2_trans_count],[Ctrl,u32,ch_al2_ctrl]),
+        ([Read,*const u8,ch_al3_read_addr_trig],[Count,u32,ch_al3_trans_count],[Write,*mut u8,ch_al3_write_addr],[Ctrl,u32,ch_al3_ctrl]));
+
+static mut CH0_SPI:Option<&CH> = None;
+
 fn display_dma_line(l: u8, flags: [u8; 4], line: &[u8; 240]) {
     cortex_m::interrupt::free(|_| unsafe {
         // Now interrupts are disabled
@@ -409,11 +579,13 @@ fn display_dma_line(l: u8, flags: [u8; 4], line: &[u8; 240]) {
 
 
         unsafe {
+            /* 
             let CH0_READ_ADDR = bsp::pac::DMA::PTR.cast::<u32>().offset(0x00) as *mut u32;
             let CH0_WRITE_ADDR = bsp::pac::DMA::PTR.cast::<u32>().offset(0x01) as *mut u32;
             let CH0_TRANS_COUNT = bsp::pac::DMA::PTR.cast::<u32>().offset(0x02) as *mut u32;
             let CH0_CTRL_TRIG = bsp::pac::DMA::PTR.cast::<u32>().offset(0x03) as *mut u32;
             let CH1_START = bsp::pac::DMA::PTR.cast::<u32>().offset(0x40 / 4) as *mut u32;
+            */
             let to_write = ConfigBuilder {
                 treq_sel: 16,
                 irq_quiet: true,
@@ -422,17 +594,24 @@ fn display_dma_line(l: u8, flags: [u8; 4], line: &[u8; 240]) {
                 enable: true,
                 ..Default::default()
             };
-            let to_write = to_write.encode();
+            let ctrl = to_write.encode();
             //let to_write = (1 << 10) + (0x2 << 6) + (1 << 5) + (1 << 4) + (0x2 << 2) + 0b11;
 
             //SSPDMACR.TXDMAE = 1
 
-            core::ptr::write_volatile(CH0_READ_ADDR, line.as_ptr() as u32);
+            let command = ReadWriteCountCtrl::new(
+                line.as_ptr() as *const u8, 
+                (pac::SPI0::PTR.cast::<u32>().offset(0x2) as u32 + 3) as *mut u8,
+                240, 
+                ctrl);
+
+                 
+            /*core::ptr::write_volatile(CH0_READ_ADDR, line.as_ptr() as u32);
             core::ptr::write_volatile(
                 CH0_WRITE_ADDR,
                 pac::SPI0::PTR.cast::<u32>().offset(0x2) as u32 + 3,
             );
-            core::ptr::write_volatile(CH0_TRANS_COUNT, 240);
+            core::ptr::write_volatile(CH0_TRANS_COUNT, 240);*/
 
             /*core::ptr::write_volatile(CH0_READ_ADDR, core::ptr::addr_of!(DISPLAY_DMA) as u32);
                         core::ptr::write_volatile(CH0_WRITE_ADDR, CH1_START as u32);
@@ -463,7 +642,9 @@ fn display_dma_line(l: u8, flags: [u8; 4], line: &[u8; 240]) {
             let INTE0 = pac::DMA::PTR.cast::<u32>().offset(0x404 / 4) as *mut u32;
             core::ptr::write_volatile(INTE0, 0x1);*/
             //let to_write = (16 << 15) + 0 + 0 + 0 + 0 + (1 << 4) + 0x0 + 0b11;
-            core::ptr::write_volatile(CH0_CTRL_TRIG, to_write);
+            //core::ptr::write_volatile(CH0_CTRL_TRIG, to_write);
+            let bad = unsafe{&pac::Peripherals::steal().DMA.ch[0]}; 
+            command.write(bad);
         }
     })
 }
@@ -584,7 +765,7 @@ fn display_fill(a: u8, b: u8) {
     cortex_m::asm::delay(8 * 8 * 2 * 2); //8 level buffer, 8 bits, 2 cpu clocks per bit, 2 to be sure;
                                          //display.chip_select.set_high().unwrap();
 }
-
+/* 
 fn emulator_loop() -> ! {
     info!("emulate");
     let core = unsafe { pac::CorePeripherals::steal() };
@@ -597,7 +778,7 @@ fn emulator_loop() -> ! {
     gb.main_loop(fifo, core.SYST, pac.XIP_CTRL);
     loop {}
 }
-
+*/
 fn display_loop() -> ! {
     let mut pac = unsafe { pac::Peripherals::steal() };
 
@@ -650,6 +831,7 @@ fn display_loop() -> ! {
     unsafe {
         DISPLAY = Some(display);
         LCD_TE = Some(lcd_te);
+       // CH0_SPI = Some(&(pac.DMA.ch[0]));
     }
     cortex_m::asm::delay(500 * ms);
     //let mut screen = [0u8; 240 * 320 * 2];
@@ -679,7 +861,7 @@ fn display_loop() -> ! {
     unsafe {
         renderer::embedded_loop(
             ms,
-            &mut sio.fifo,
+            FifoCore1::new( sio.fifo),
             &mut sio.interp0,
             &mut sio.interp1,
             pac.PIO0,
@@ -767,6 +949,8 @@ static ALPHA :[u8;64] = [
     0b11111111,
 ];
 
+
+
 #[entry] // Warning must call your board entry, rp2040 entry not directly cortex entry
 fn main() -> ! {
     //let args: Vec<String> = std::env::args().collect();
@@ -775,12 +959,6 @@ fn main() -> ! {
     let mut sio = Sio::new(pac.SIO);
     let mut watchdog = Watchdog::new(pac.WATCHDOG);
 
-    /*unsafe {
-        // Seems like spinlocks are not cleared on startup;
-        bsp::hal::sio::Spinlock3::release();
-        bsp::hal::sio::Spinlock4::release();
-        bsp::hal::sio::Spinlock5::release();
-    }*/
     // External high-speed crystal on the pico board is 12Mhz
     let external_xtal_freq_hz = 12_000_000u32;
     let clocks = init_clocks_and_plls(
@@ -889,7 +1067,7 @@ fn main() -> ! {
         let mut y_dir:i16 = 1;
         loop { 
             match Ipc::from_bits( sio.fifo.read_blocking()){
-                Ipc::VBlank(_) =>{
+                IpcFromRender::VBlank(_) =>{
                     let (x,y) = 
                     video.with_oam(|mut oam|{
                         if oam[0].x <= 8 {
@@ -909,7 +1087,7 @@ fn main() -> ! {
                     });
                     info!("sprites at {}:{}",x,y);
                 }
-                Ipc::Key(x)=>{
+                IpcFromRender::Key(x)=>{
                     if x == 0xff{
                         video.with_reg(|mut reg| reg.enable_sprites = true)
                     }else{
@@ -925,7 +1103,7 @@ fn main() -> ! {
         let mut gb = unsafe { GB.as_mut().expect("GB is not initialized") };
 
         watchdog.enable_tick_generation(bsp::XOSC_CRYSTAL_FREQ as u8);
-        gb.main_loop(sio.fifo, core.SYST, pac.XIP_CTRL);
+        gb.main_loop(FifoCore0::new(sio.fifo), core.SYST, pac.XIP_CTRL);
         loop {}
     }
     //    let _thread = core1.spawn(emulator_loop, unsafe { &mut CORE1_STACK.mem });

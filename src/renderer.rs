@@ -1,5 +1,8 @@
 use crate::cpu::ram::io::video::*;
-use crate::{display_dma_line, display_end, display_line, display_wait_sync, read_keys, Ipc};
+use crate::{
+    display_dma_line, display_end, display_line, display_wait_sync, read_keys, Ipc, IpcFromRender,
+    StructuredFifo,
+};
 use core::cell::RefCell;
 use cortex_m::peripheral::SYST;
 use defmt::{debug, info};
@@ -225,7 +228,7 @@ impl SpriteRenderer {
 
                 //            println!("16 tile {} {} {:02x} {}",f.x,f.y,tile,tile_line);
                 let tile_line_data = ram.get_u16_tile(true, tile, tile_line);
-                to.write(tile_line_data);
+                to.write(tile_line_data as u32);
                 let x = f.x as usize;
 
                 if !f.x_flip {
@@ -260,7 +263,7 @@ impl SpriteRenderer {
                     while i >= limit {
                         let val = from.read().unwrap();
                         if line[i].color == 0 && val != 0 {
-                            line[i].color == val as u8;
+                            line[i].color = val as u8;
                             line[i].palette = f.palette;
                             line[i].behind_bg = f.behind_bg;
                         }
@@ -357,9 +360,10 @@ fn tile_line_offset(line: u8, scroll_y: u8, tile_map: u16) -> (u16, u8) {
 
 const VIDEO_LOG: bool = false;
 
+use crate::FifoCore1;
 pub fn embedded_loop(
     ms: u32,
-    fifo: &mut SioFifo,
+    mut fifo: FifoCore1,
     interp_bg: &mut Interp0,
     interp_win: &mut Interp1,
     pio0: rp_pico::pac::PIO0,
@@ -490,10 +494,13 @@ loop:
 
     let rgbfier_sm_started = rgbfier_sm.start();
 
-    let mut config = sio::LaneCtrl::default();
-    config.mask_msb = 4;
-    interp_bg.get_lane0().set_ctrl(config.encode());
-    interp_win.get_lane0().set_ctrl(config.encode());
+    const config: u32 = sio::LaneCtrl {
+        mask_msb: 4,
+        ..sio::LaneCtrl::new()
+    }
+    .encode();
+    interp_bg.get_lane0().set_ctrl(config);
+    interp_win.get_lane0().set_ctrl(config);
     loop {
         'screen: loop {
             //let mut pixel_buffer = [0u8; 6];
@@ -509,16 +516,16 @@ loop:
             if !enabled {
                 if display_started {
                     //debug!("DISPLAY OFF");
-                    Ipc::DisplayOff.send(fifo);
+                    fifo.write_blocking(IpcFromRender::DisplayOff);
                     display_started = false;
                 }
-                let keys = Ipc::Key(read_keys()).send(fifo);
+                fifo.write_blocking(IpcFromRender::Key(read_keys()));
                 cortex_m::asm::delay(ms / 64);
                 continue;
             } else {
                 if !display_started {
                     //debug!("DISPLAY ON");
-                    Ipc::DisplayOn.send(fifo);
+                    fifo.write_blocking(IpcFromRender::DisplayOn);
                     display_started = true;
                 }
             }
@@ -601,7 +608,7 @@ loop:
                         break 'line;
                     }
                     if lyc_check && lyc == l {
-                        Ipc::LycCoincidence.send(fifo);
+                        fifo.write_blocking(IpcFromRender::LycCoincidence);
                     }
                     to_background.drain_fifo();
                     background_sm_started.exec_instruction(INSTRUCTION_PUSH);
@@ -614,7 +621,7 @@ loop:
                     );
                     while from_background.read().is_some() {}
 
-                    Ipc::Oam(mode2_interrupt).send(fifo);
+                    fifo.write_blocking(IpcFromRender::Oam(mode2_interrupt));
                     let (
                         sprites,
                         (
@@ -738,10 +745,10 @@ loop:
                                                 info!("done cleaning");
                         */
                         if let Some(x) = background_to_write {
-                            to_background.write(x);
+                            to_background.write(x as u32);
                         }
                         if let Some(x) = window_to_write {
-                            to_window.write(x);
+                            to_window.write(x as u32);
                         }
 
                         let bg_ptr: *const u8 = &vram.vram[bg_tile_line_offset as usize];
@@ -756,7 +763,7 @@ loop:
                                 vram.get_u16_tile(tile_set, tile, bg_line_offset_within_tile);
 
                             //info!("push bg {:04X} at {}", tile_data, SYST::get_current());
-                            to_background.write(tile_data);
+                            to_background.write(tile_data as u32);
                             //bg_tile_column = (bg_tile_column + 1) % 32;
                         };
 
@@ -770,7 +777,7 @@ loop:
 
                             let tile_data =
                                 vram.get_u16_tile(tile_set, tile, window_line_offset_within_tile);
-                            to_window.write(tile_data);
+                            to_window.write(tile_data as u32);
                             //window_tile_column = (window_tile_column + 1) % 32;
                         };
                         send_one_bg_tile(&vram);
@@ -922,14 +929,14 @@ loop:
                     reg.enable_mode_0_hblank_check
                 });
                 //info!("00  {} {:?}", SYST::get_current(), test);
-                Ipc::Hblank(interrupt_hblank).send(fifo);
+                fifo.write_blocking(IpcFromRender::Hblank(interrupt_hblank));
                 //info!("{}", line_buff);
                 //info!("line time {}", start - SYST::get_current());
                 display_dma_line(l as u8, [l as u8, 0, 1, 0], unsafe {
                     &(line_buff[l as usize & 1].with_u8)
                 });
 
-                Ipc::Key(read_keys()).send(fifo);
+                fifo.write_blocking(IpcFromRender::Key(read_keys()));
 
                 // TODO HBLANK, here do audio ?
 
@@ -955,7 +962,7 @@ loop:
                     (reg.enable_mode_1_vblank_check, (l == 144))
                 });
                 if line {
-                    Ipc::VBlank(interrupt_vblank).send(fifo);
+                    fifo.write_blocking(IpcFromRender::VBlank(interrupt_vblank));
                 }
                 cortex_m::asm::delay(ms / 10);
             }

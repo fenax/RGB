@@ -135,10 +135,10 @@ impl InterruptManager {
 
     #[inline]
     pub fn add_interrupt(&mut self, i: &Interrupt) -> bool {
-        if let Interrupt::None = i {
+        /*if let Interrupt::None = i {
         } else {
             info!("interrupted by {}", i);
-        }
+        }*/
         match i {
             Interrupt::VBlank => self.request_vblank = true,
             Interrupt::LcdcStatus => self.request_lcd_stat = true,

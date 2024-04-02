@@ -50,7 +50,7 @@ impl Default for Cartridge {
             has_sensor: false,
             //            rom: [0; 0x4000],
             //fullrom: include_bytes!("../../../Downloads/01-special.gb"),
-            fullrom: include_bytes!("../../../Tetris.gb"),
+            fullrom: include_bytes!("../../../Downloads/instr_timing.gb"),
             ramswitch: [[0; 0x2000]; 1],
             cur_ram: 0,
             cur_rom: 0,
