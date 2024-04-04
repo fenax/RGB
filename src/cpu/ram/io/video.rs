@@ -2,7 +2,7 @@ use cpu::ram::io::*;
 use cpu::ram::Ram;
 use std::cmp::Ordering;
 use std::panic;
-const VIDEO_DEBUG: bool = false;
+const VIDEO_DEBUG: bool = true;
 #[derive(Copy, Clone, Eq)]
 pub struct Sprite {
     pub y: u8,
@@ -430,17 +430,17 @@ impl Video {
                     //screen
                     match ram.video.line_clock {
                         END_MODE_2 => {
-                            println!("mode3");
+                            //println!("mode3");
                             ram.video.draw_line();
                         }
                         END_MODE_3 => {
-                            println!("mode0");
+                            //println!("mode0");
                             if ram.video.enable_mode_0_hblank_check {
                                 outlcdc = Interrupt::LcdcStatus;
                             }
                         }
                         END_MODE_0 => {
-                            println!("mode2");
+                            //println!("mode2");
                             if ram.video.enable_mode_2_oam_check {
                                 outlcdc = Interrupt::LcdcStatus;
                             }
@@ -464,19 +464,27 @@ impl Video {
                     if ram.video.line_clock == END_MODE_3 {
                         ram.video.line = 0;
                         ram.video.window_line = 0;
+                        ram.video.line_clock = 0;
                         outvblank = Interrupt::VBlankEnd;
+                        println!("{:?}", ram.video);
                     }
                     // shorter line
                 }
                 _ => unreachable!("yes"),
             }
-            if ram.video.line_clock == 114 {
-                ram.video.line_clock = 0;
-                ram.video.line += 1;
-
-                if ram.video.enable_ly_lcy_check && ram.video.line == ram.video.line_compare {
+            if ram.video.line_clock == 1 {
+                ram.video.signal_ly_lcy_comparison = ram.video.line == ram.video.line_compare;
+                println!(
+                    "lylyc is {}  {} {}",
+                    ram.video.signal_ly_lcy_comparison, ram.video.line, ram.video.line_compare
+                );
+                if ram.video.signal_ly_lcy_comparison && ram.video.enable_ly_lcy_check {
                     outlcdc = Interrupt::LcdcStatus;
                 }
+            }
+            if ram.video.line_clock == 115 {
+                ram.video.line_clock = 0;
+                ram.video.line += 1;
             }
         }
         /*
@@ -599,7 +607,7 @@ impl Video {
         bit_merge(
             false,
             false,
-            self.line_compare == self.line,
+            self.signal_ly_lcy_comparison,
             self.enable_mode_0_hblank_check,
             self.enable_mode_1_vblank_check,
             self.enable_mode_2_oam_check,

@@ -150,7 +150,7 @@ impl InterruptManager {
                 ram.push16(&mut reg.sp, reg.pc);
                 reg.pc = 0x40;
             } else if ram.interrupt.enable_lcd_stat && ram.interrupt.request_lcd_stat {
-                //println!("running lcd_stat" );
+                println!("running lcd_stat");
                 ram.interrupt.master_enable = false;
                 ram.interrupt.request_lcd_stat = false;
                 ram.push16(&mut reg.sp, reg.pc);
