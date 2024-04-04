@@ -1,7 +1,7 @@
 use cpu::ram::io::*;
 use cpu::ram::Ram;
 use std::cmp::Ordering;
-const VIDEO_DEBUG:bool = false;
+const VIDEO_DEBUG: bool = false;
 #[derive(Copy, Clone, Eq)]
 pub struct Sprite {
     pub y: u8,
@@ -88,14 +88,14 @@ pub struct Video {
     line_clock: u16,
     line: u8,
     window_line: u8,
-    #[derivative(Debug="ignore")]
+    #[derivative(Debug = "ignore")]
     pub vram: [u8; 0x2000],
-    #[derivative(Debug="ignore")]
+    #[derivative(Debug = "ignore")]
     tiles: [[u8; 8 * 8]; 0x180],
 
-    #[derivative(Debug="ignore")]
+    #[derivative(Debug = "ignore")]
     pub back_buffer: [u8; 144 * 160],
-    #[derivative(Debug="ignore")]
+    #[derivative(Debug = "ignore")]
     oam: [Sprite; 40],
 
     pub updated_tiles: bool,
@@ -413,29 +413,38 @@ impl Video {
         }
     }
 
-    pub fn step(ram: &mut Ram, _clock: u32) -> (Interrupt,Interrupt) {
+    pub fn step(ram: &mut Ram, _clock: u32) -> (Interrupt, Interrupt) {
         let mut outvblank = Interrupt::None;
         let mut outlcdc = Interrupt::None;
 
         if ram.video.enable_lcd {
             ram.video.line_clock += 1;
-            if ram.video.line_clock == 20 {        //mode 2 -> 3
-
-            }else if ram.video.line_clock == 63 {  //mode 3 -> 0
+            if ram.video.line_clock == 20 {
+                //mode 2 -> 3
+                println!("mode 3");
+            } else if ram.video.line_clock == 63 {
+                //mode 3 -> 0
+                println!("mode 0 flags {}", ram.video.enable_mode_0_hblank_check);
                 if ram.video.line < 145 && ram.video.enable_mode_0_hblank_check {
                     outlcdc = Interrupt::LcdcStatus;
                 }
-
-            }else if ram.video.line_clock >= 114 { //mode 0 -> 2
+            } else if ram.video.line_clock >= 114 {
+                println!("mode 2 flags {}", ram.video.enable_mode_2_oam_check);
+                //mode 0 -> 2
                 //println!("end of line {} lcy = {}{}",ram.video.line, ram.video.line_compare,ram.video.enable_ly_lcy_check );
                 ram.video.line_clock = 0;
                 ram.video.line += 1;
-                if ram.video.enable_ly_lcy_check && ram.video.line == ram.video.line_compare{
+                if ram.video.enable_ly_lcy_check && ram.video.line == ram.video.line_compare {
                     //println!("adding lcds interrupt");
                     outlcdc = Interrupt::LcdcStatus;
                 }
                 if ram.video.line == 145 {
-                    if ram.video.enable_mode_1_vblank_check{
+                    println!(
+                        "mode 1 flags {} {}",
+                        ram.video.enable_mode_1_vblank_check, ram.interrupt.enable_vblank
+                    );
+
+                    if ram.video.enable_mode_1_vblank_check {
                         outlcdc = Interrupt::LcdcStatus;
                     }
                     outvblank = Interrupt::VBlank;
@@ -446,12 +455,12 @@ impl Video {
                     if ram.video.enable_mode_2_oam_check && ram.video.line == 154 {
                         outlcdc = Interrupt::LcdcStatus;
                     }
-                    if ram.video.enable_ly_lcy_check && ram.video.line == ram.video.line_compare{
+                    if ram.video.enable_ly_lcy_check && ram.video.line == ram.video.line_compare {
                         outlcdc = Interrupt::LcdcStatus;
                     }
                     outvblank = Interrupt::VBlankEnd;
                 } else if ram.video.line < 145 {
-                    if ram.video.enable_mode_2_oam_check && ram.video.line == 0{
+                    if ram.video.enable_mode_2_oam_check && ram.video.line == 0 {
                         outlcdc = Interrupt::LcdcStatus;
                     }
                 }
@@ -461,10 +470,10 @@ impl Video {
                 }
             }
         }
-        (outlcdc,outvblank)
+        (outlcdc, outvblank)
     }
     pub fn write_control(&mut self, v: u8) {
-        if VIDEO_DEBUG{
+        if VIDEO_DEBUG {
             println!("write lcd control {:02x}", v);
         }
         //let v = bit_split(v);
@@ -496,7 +505,7 @@ impl Video {
     }
 
     pub fn write_status(&mut self, v: u8) {
-        if VIDEO_DEBUG{
+        if VIDEO_DEBUG {
             println!("writing status {:x}", v);
         }
         let v = bit_split(v);
@@ -507,7 +516,7 @@ impl Video {
         //self.signal_ly_lcy_comparison = v[2];
     }
 
-    pub fn get_video_mode(&self)-> u8{
+    pub fn get_video_mode(&self) -> u8 {
         if self.line >= 144 {
             1
         } else {
@@ -520,7 +529,7 @@ impl Video {
     }
 
     pub fn read_status(&self) -> u8 {
-        if VIDEO_DEBUG{
+        if VIDEO_DEBUG {
             println!("read status {} {}", self.line, self.line_clock);
         }
         bit_merge(
@@ -536,8 +545,8 @@ impl Video {
     }
 
     pub fn write_scroll_y(&mut self, v: u8) {
-        if VIDEO_DEBUG{
-        //    println!("write scroll y {}",v);
+        if VIDEO_DEBUG {
+            //    println!("write scroll y {}",v);
         }
         self.scroll_y = v;
     }
@@ -547,8 +556,8 @@ impl Video {
     }
 
     pub fn write_scroll_x(&mut self, v: u8) {
-        if VIDEO_DEBUG{
-            println!("write scroll x {}",v);
+        if VIDEO_DEBUG {
+            println!("write scroll x {}", v);
         }
         self.scroll_x = v;
     }
@@ -567,8 +576,8 @@ impl Video {
     }
 
     pub fn write_window_scroll_x(&mut self, v: u8) {
-        if VIDEO_DEBUG{
-            println!("write window scroll x {}",v);
+        if VIDEO_DEBUG {
+            println!("write window scroll x {}", v);
         }
         self.window_scroll_x = v;
     }
@@ -584,7 +593,7 @@ impl Video {
         self.line_compare
     }
     pub fn write_line_compare(&mut self, v: u8) {
-        if VIDEO_DEBUG{
+        if VIDEO_DEBUG {
             println!("write line compare {} current line is {}", v, self.line);
         }
         self.line_compare = v;
@@ -623,14 +632,22 @@ impl Video {
         self.sprite_palette_1[2] = base[((v >> 6) & 3) as usize];
     }
     pub fn write_oam(&mut self, a: u16, v: u8) {
-        if self.get_video_mode() > 1{
-            println!("##########################Tried to write to oam in mode2 or mode3");
+        let mode = self.get_video_mode();
+        if mode > 1 {
+            println!(
+                "##########################Tried to write to oam in mode{}",
+                mode
+            );
+        } else {
+            println!("$$$$$$$ Write ot oam")
         }
         self.oam[(a >> 2) as usize].write(a & 0x3, v);
     }
     pub fn write_vram(&mut self, a: u16, v: u8) {
-        if self.get_video_mode() == 3{
+        if self.get_video_mode() == 3 {
             println!("##########################Tried to write to vram in mode3");
+        } else {
+            println!("$$$$$$ Write to vram");
         }
         match a {
             0..=0x17ff => {
@@ -666,7 +683,7 @@ impl Video {
         self.vram[a as usize] = v;
     }
     pub fn read_vram(&self, a: u16) -> u8 {
-        if self.get_video_mode() == 3{
+        if self.get_video_mode() == 3 {
             println!("##########################Tried to read from vram in mode3");
         }
         self.vram[a as usize]

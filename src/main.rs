@@ -265,6 +265,7 @@ impl Gameboy {
                     self.ram.video.clear_update();
                 }
                 cpu::ram::io::Interrupt::VBlankEnd => {
+                    println!("got VBLANKEND");
                     self.try_read_all(&mut rx);
                 }
                 _ => {}

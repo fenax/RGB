@@ -415,6 +415,7 @@ impl Dma {
         }
     }
     pub fn write(&mut self, v: u8) {
+        println!("##### WRITE DMA");
         self.address = v;
         self.started = true;
         self.index = 0;
