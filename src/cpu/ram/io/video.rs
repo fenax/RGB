@@ -1,6 +1,7 @@
 use cpu::ram::io::*;
 use cpu::ram::Ram;
 use std::cmp::Ordering;
+use std::panic;
 const VIDEO_DEBUG: bool = false;
 #[derive(Copy, Clone, Eq)]
 pub struct Sprite {
@@ -417,6 +418,68 @@ impl Video {
         let mut outvblank = Interrupt::None;
         let mut outlcdc = Interrupt::None;
 
+        const END_MODE_0: u16 = 1;
+        const END_MODE_2: u16 = 21;
+        const END_MODE_3: u16 = 64;
+        //        const END_MODE_0: u16 = 115;
+        if ram.video.enable_lcd {
+            ram.video.line_clock += 1;
+
+            match ram.video.line {
+                0..=143 => {
+                    //screen
+                    match ram.video.line_clock {
+                        END_MODE_2 => {
+                            println!("mode3");
+                            ram.video.draw_line();
+                        }
+                        END_MODE_3 => {
+                            println!("mode0");
+                            if ram.video.enable_mode_0_hblank_check {
+                                outlcdc = Interrupt::LcdcStatus;
+                            }
+                        }
+                        END_MODE_0 => {
+                            println!("mode2");
+                            if ram.video.enable_mode_2_oam_check {
+                                outlcdc = Interrupt::LcdcStatus;
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                144 => {
+                    if ram.video.line_clock == END_MODE_0 {
+                        outvblank = Interrupt::VBlank;
+
+                        if ram.video.enable_mode_1_vblank_check && !ram.interrupt.enable_vblank {
+                            outlcdc = Interrupt::LcdcStatus;
+                        }
+                    }
+                }
+                145..=152 => {
+                    // vblank
+                }
+                153 => {
+                    if ram.video.line_clock == END_MODE_3 {
+                        ram.video.line = 0;
+                        ram.video.window_line = 0;
+                        outvblank = Interrupt::VBlankEnd;
+                    }
+                    // shorter line
+                }
+                _ => unreachable!("yes"),
+            }
+            if ram.video.line_clock == 114 {
+                ram.video.line_clock = 0;
+                ram.video.line += 1;
+
+                if ram.video.enable_ly_lcy_check && ram.video.line == ram.video.line_compare {
+                    outlcdc = Interrupt::LcdcStatus;
+                }
+            }
+        }
+        /*
         if ram.video.enable_lcd {
             ram.video.line_clock += 1;
             if ram.video.line_clock == 20 {
@@ -469,7 +532,8 @@ impl Video {
                     ram.video.draw_line();
                 }
             }
-        }
+
+        }*/
         (outlcdc, outvblank)
     }
     pub fn write_control(&mut self, v: u8) {
