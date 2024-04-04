@@ -1,9 +1,9 @@
 extern crate byteorder;
 
-extern crate piston;
-extern crate graphics;
 extern crate glutin_window;
+extern crate graphics;
 extern crate opengl_graphics;
+extern crate piston;
 
 extern crate libpulse_binding as pulse;
 extern crate libpulse_simple_binding as psimple;
@@ -12,8 +12,8 @@ extern crate derivative;
 #[macro_use]
 extern crate itertools;
 
-extern crate image;
 extern crate find_folder;
+extern crate image;
 
 use std::thread;
 
@@ -69,17 +69,17 @@ pub enum ToEmu {
     KeyUp(EmuKeys),
 }
 
-pub struct ToDisplay{
-    pub back_buffer:[u8; 160 * 144],
-    pub hram:Vec<u8>,
-    pub window0:Option<Vec<u8>>,
-    pub window1:Option<Vec<u8>>,
-    pub tileset:Option<Vec<u8>>,
-    pub tile_select:bool,
+pub struct ToDisplay {
+    pub back_buffer: Box<[u8; 160 * 144]>,
+    pub hram: Vec<u8>,
+    pub window0: Option<Vec<u8>>,
+    pub window1: Option<Vec<u8>>,
+    pub tileset: Option<Vec<u8>>,
+    pub tile_select: bool,
 }
 
-impl ToDisplay{
-    pub fn collect(ram: &mut ram::Ram) ->ToDisplay{
+impl ToDisplay {
+    pub fn collect(ram: &mut ram::Ram) -> ToDisplay {
         let set = if ram.video.updated_tiles {
             ram.video.updated_tiles = false;
             let mut set = Vec::new();
@@ -107,13 +107,13 @@ impl ToDisplay{
         let mut m = Vec::new();
         m.extend_from_slice(&ram.hram);
 
-        ToDisplay{
-            back_buffer:ram.video.back_buffer,
-            hram:m,
-            window0:w0,
-            window1:w1,
-            tileset:set,
-            tile_select:ram.video.tile_set
+        ToDisplay {
+            back_buffer: Box::new(ram.video.back_buffer),
+            hram: m,
+            window0: w0,
+            window1: w1,
+            tileset: set,
+            tile_select: ram.video.tile_set,
         }
     }
 }
@@ -122,7 +122,7 @@ struct Gameboy {
     ram: cpu::ram::Ram,
     reg: cpu::registers::Registers,
     alu: cpu::alu::Alu,
-    running:bool,
+    running: bool,
     got_tick: bool,
 }
 impl Gameboy {
@@ -132,7 +132,7 @@ impl Gameboy {
             reg: cpu::registers::Registers::origin(),
             alu: cpu::alu::Alu::origin(),
             got_tick: false,
-            running:true,
+            running: true,
         }
     }
 
@@ -146,11 +146,19 @@ impl Gameboy {
             ToEmu::Command(EmuCommand::Audio2(v)) => self.ram.audio.override_sound2 = v,
             ToEmu::Command(EmuCommand::Audio3(v)) => self.ram.audio.override_sound3 = v,
             ToEmu::Command(EmuCommand::Audio4(v)) => self.ram.audio.override_sound4 = v,
-            ToEmu::Command(EmuCommand::PrintAudio1) => println!("#### audio 1\n{:?}",self.ram.audio.square1),
-            ToEmu::Command(EmuCommand::PrintAudio2) => println!("#### audio 2\n{:?}",self.ram.audio.square2),
-            ToEmu::Command(EmuCommand::PrintAudio3) => println!("#### audio 3\n{:?}",self.ram.audio.wave3),
-            ToEmu::Command(EmuCommand::PrintAudio4) => println!("#### audio 4\n{:?}",self.ram.audio.noise4),
-            ToEmu::Command(EmuCommand::PrintVideo) => println!("#### video\n{:?}",self.ram.video),
+            ToEmu::Command(EmuCommand::PrintAudio1) => {
+                println!("#### audio 1\n{:?}", self.ram.audio.square1)
+            }
+            ToEmu::Command(EmuCommand::PrintAudio2) => {
+                println!("#### audio 2\n{:?}", self.ram.audio.square2)
+            }
+            ToEmu::Command(EmuCommand::PrintAudio3) => {
+                println!("#### audio 3\n{:?}", self.ram.audio.wave3)
+            }
+            ToEmu::Command(EmuCommand::PrintAudio4) => {
+                println!("#### audio 4\n{:?}", self.ram.audio.noise4)
+            }
+            ToEmu::Command(EmuCommand::PrintVideo) => println!("#### video\n{:?}", self.ram.video),
             ToEmu::Command(EmuCommand::Save) => self.ram.cart.save(),
             ToEmu::Command(EmuCommand::Quit) => self.running = false,
             _ => println!("{:?}", t),
@@ -181,14 +189,14 @@ impl Gameboy {
         //s.write(&buffer);
 
         loop {
-            if self.running == false{
+            if self.running == false {
                 break;
             }
             clock = clock.wrapping_add(1);
             if !halted {
-                if cpu_wait == 0{
+                if cpu_wait == 0 {
                     //print!("\n{:05x}{}{} ",clock,self.alu,self.reg);
-                    if !halted{
+                    if !halted {
                         match instruct(&mut self.ram, &mut self.reg, &mut self.alu) {
                             CpuState::None => {}
                             CpuState::Wait(t) => cpu_wait = t,
@@ -222,7 +230,7 @@ impl Gameboy {
             interrupted = self.ram.interrupt.add_interrupt(&i_dma) || interrupted;
             interrupted = self.ram.interrupt.add_interrupt(&i_video.0) || interrupted;
             interrupted = self.ram.interrupt.add_interrupt(&i_video.1) || interrupted;
-            if interrupted{
+            if interrupted {
                 halted = false;
             }
             match i_audio {
@@ -253,8 +261,7 @@ impl Gameboy {
             match i_video.1 {
                 cpu::ram::io::Interrupt::VBlank => {
                     println!("got VBLANK");
-                    tx.send(ToDisplay::collect(&mut self.ram))
-                        .unwrap();
+                    tx.send(ToDisplay::collect(&mut self.ram)).unwrap();
                     self.ram.video.clear_update();
                 }
                 cpu::ram::io::Interrupt::VBlankEnd => {
@@ -295,7 +302,6 @@ fn main() -> io::Result<()> {
         None,
     )
     .unwrap();
-
 
     let cart = cpu::cartridge::Cartridge::new(&args[1]);
     cart.extract_info();
