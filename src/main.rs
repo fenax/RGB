@@ -5,8 +5,8 @@ extern crate graphics;
 extern crate opengl_graphics;
 extern crate piston;
 
-extern crate libpulse_binding as pulse;
-extern crate libpulse_simple_binding as psimple;
+extern crate cpal;
+
 #[macro_use]
 extern crate derivative;
 #[macro_use]
@@ -15,7 +15,9 @@ extern crate itertools;
 extern crate find_folder;
 extern crate image;
 
-use std::thread;
+use std::hint::black_box;
+use std::time::{Duration, Instant};
+use std::{sync::mpsc::Sender, thread};
 
 use std::sync::mpsc;
 
@@ -23,9 +25,9 @@ use std::fs::File;
 use std::io;
 
 use byteorder::{LittleEndian, WriteBytesExt};
-use psimple::Simple;
-use pulse::sample;
-use pulse::stream::Direction;
+use cpal::{BufferSize, SampleRate, StreamConfig, SupportedBufferSize};
+use itertools::Itertools;
+
 use std::mem;
 mod cpu;
 mod window;
@@ -124,15 +126,17 @@ struct Gameboy {
     alu: cpu::alu::Alu,
     running: bool,
     got_tick: bool,
+    sample_rate: u32,
 }
 impl Gameboy {
-    fn origin(cart: cpu::cartridge::Cartridge) -> Gameboy {
+    fn origin(cart: cpu::cartridge::Cartridge, sample_rate: u32) -> Gameboy {
         Gameboy {
             ram: cpu::ram::Ram::origin(cart),
             reg: cpu::registers::Registers::origin(),
             alu: cpu::alu::Alu::origin(),
             got_tick: false,
             running: true,
+            sample_rate,
         }
     }
 
@@ -177,9 +181,10 @@ impl Gameboy {
     fn main_loop(
         &mut self,
         mut rx: mpsc::Receiver<ToEmu>,
-        mut tx: mpsc::Sender<ToDisplay>,
-        mut s: Simple,
+        tx: mpsc::Sender<ToDisplay>,
+        sound: mpsc::SyncSender<(f32, f32)>,
     ) {
+        let FRAME_TIME = Duration::from_secs_f64(1.0 / 59.0);
         let mut clock = 0 as u32;
         let mut cpu_wait = 0;
         let mut buffer_index = 0;
@@ -187,6 +192,10 @@ impl Gameboy {
         let mut file = File::create("out.pcm").ok().unwrap();
         let mut halted = false;
         //s.write(&buffer);
+
+        let mut time = Instant::now();
+
+        self.ram.audio.set_sample_rate(self.sample_rate);
 
         loop {
             if self.running == false {
@@ -234,28 +243,7 @@ impl Gameboy {
                 halted = false;
             }
             match i_audio {
-                cpu::ram::io::Interrupt::AudioSample(l, r) => {
-                    let size = mem::size_of::<f32>();
-                    let index = buffer_index * 2 * size;
-                    let index2 = (buffer_index * 2 + 1) * size;
-                    buffer[index..index + size]
-                        .as_mut()
-                        .write_f32::<LittleEndian>(l as f32)
-                        .expect("failed to convert sound sample shape");
-                    buffer[index2..index2 + size]
-                        .as_mut()
-                        .write_f32::<LittleEndian>(r as f32)
-                        .expect("failed to convert sound sample shape");
-                    buffer_index += 1;
-                    if buffer_index * 2 * size >= buffer.len() {
-                        s.write(&buffer).expect("Failed writing to sound buffer.");
-                        //file.write_all(&buffer).expect("failed writing to file");
-                        thread::yield_now();
-                        buffer_index = 0;
-                    } else if buffer_index * 8 == buffer.len() {
-                        thread::yield_now();
-                    }
-                }
+                cpu::ram::io::Interrupt::AudioSample(l, r) => sound.send((l, r)).unwrap(),
                 _ => {}
             };
             match i_video.1 {
@@ -266,6 +254,19 @@ impl Gameboy {
                 }
                 cpu::ram::io::Interrupt::VBlankEnd => {
                     println!("got VBLANKEND");
+                    let now = Instant::now();
+                    let elapsed = now - time;
+                    if elapsed < FRAME_TIME {
+                        let to_sleep = FRAME_TIME - elapsed;
+                        println!(
+                            "sleep {:?} {:?}  /// {:?} XXX {:?}",
+                            time, now, elapsed, to_sleep
+                        );
+                        thread::sleep(FRAME_TIME - elapsed)
+                    } else {
+                        println!("no sleep {:?} {:?}  /// {:?}", time, now, elapsed);
+                    }
+                    time = time + FRAME_TIME;
                     self.try_read_all(&mut rx);
                 }
                 _ => {}
@@ -274,46 +275,81 @@ impl Gameboy {
         println!("stopped at pc = {:04x}", self.reg.pc);
     }
 }
+
+struct HardwareConfig {
+    sample_rate: u32,
+}
+
 fn main() -> io::Result<()> {
     let args: Vec<String> = std::env::args().collect();
 
     let (to_window, inbox_window) = mpsc::channel();
     let (to_emulator, inbox_emulator) = mpsc::channel();
-    let spec = sample::Spec {
-        format: sample::Format::F32le,
-        channels: 2,
-        rate: 44100,
-    };
-    assert!(spec.is_valid());
-    let mut b_attr = libpulse_binding::def::BufferAttr::default();
-    b_attr.maxlength = 512;
-    b_attr.tlength = 256;
-    b_attr.prebuf = 256;
-    b_attr.minreq = 256;
+    let (to_sound, inbox_sound) = mpsc::sync_channel(0);
 
-    let s = Simple::new(
-        None,                   // Use the default server
-        "RGB gameboy emulator", // Our application’s name
-        Direction::Playback,    // We want a playback stream
-        None,                   // Use the default device
-        "bleep",                // Description of our stream
-        &spec,                  // Our sample format
-        None,                   // Use default channel map
-        //Some(&b_attr)         // Use default buffering attributes
-        None,
-    )
-    .unwrap();
+    use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+    let host = cpal::default_host();
+
+    let device = host
+        .default_output_device()
+        .expect("no output device available");
+
+    let mut supported_configs_range = device
+        .supported_output_configs()
+        .expect("error while querying configs");
+    let supported_config = supported_configs_range
+        .next()
+        .expect("no supported config?!")
+        .with_max_sample_rate();
+    let buffersize = supported_config.buffer_size().clone();
+
+    let mut config: StreamConfig = supported_config.into();
+    config.buffer_size = BufferSize::Fixed(256);
+    println!("buffer size {:?} {:?}", buffersize, config.sample_rate.0);
+
+    let stream = device
+        .build_output_stream(
+            &config,
+            move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
+                println!("audio callbalck {}", data.len());
+                let mut iter = data.iter_mut();
+                while let Ok((left, right)) = inbox_sound.recv() {
+                    if let Some((outleft, outright)) = iter.next_tuple() {
+                        *outleft = left;
+                        *outright = right;
+                    } else {
+                        /*
+                                                let mut cnt = 0;
+                                                while let Ok((left, right)) = inbox_sound.try_recv() {
+                                                    cnt += 1;
+                                                }
+                                                println!("--- skipped {} ---", cnt);
+                        */
+                        break;
+                    }
+                }
+                // react to stream events and read or write stream data here.
+            },
+            move |err| {
+                panic!("{:?}", err)
+                // react to errors here.
+            },
+            None, // None=blocking, Some(Duration)=timeout
+        )
+        .unwrap();
+    stream.play().unwrap();
 
     let cart = cpu::cartridge::Cartridge::new(&args[1]);
     cart.extract_info();
-    let mut gb = Box::new(Gameboy::origin(cart));
+    let mut gb = Box::new(Gameboy::origin(cart, config.sample_rate.0));
     thread::Builder::new()
         .name("emulator".to_string())
         .spawn(move || {
-            gb.main_loop(inbox_emulator, to_window, s);
+            gb.main_loop(inbox_emulator, to_window, to_sound);
         })
         .expect("failed to spawn thread");
 
     window::main_loop(inbox_window, to_emulator);
+    black_box(stream);
     Ok(())
 }

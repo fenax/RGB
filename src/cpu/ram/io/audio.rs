@@ -937,6 +937,10 @@ impl Audio {
         }
     }
 
+    pub fn set_sample_rate(&mut self, rate: u32) {
+        self.sample_len = 1048576.0 / (rate as f64)
+    }
+
     pub fn write_register(&mut self, a: u16, v: u8) {
         print!("w {:02x}={:02x}", a, v);
         match a {

@@ -125,7 +125,7 @@ impl Ram {
         }
     }
     pub fn write_io(&mut self, a: u16, v: u8) {
-        println!("write io {} {}",a,v );
+        //println!("write io {} {}",a,v );
         match a {
             0x00 => self.joypad.write(v),
             0x01 => self.serial.write_data(v),

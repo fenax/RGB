@@ -3,7 +3,12 @@ name = "RGB"
 version = "0.1.0"
 authors = ["kasil <kasil@loutre.info>"]
 
-include = ["resources/DejaVuSansMono.ttf","resources/auto.png","resources/no.png","resources/yes.png"]
+include = [
+    "resources/DejaVuSansMono.ttf",
+    "resources/auto.png",
+    "resources/no.png",
+    "resources/yes.png",
+]
 
 [dependencies]
 find_folder = "*"
@@ -13,8 +18,10 @@ piston2d-graphics = "0.39"
 pistoncore-glutin_window = "0.68"
 piston2d-opengl_graphics = "0.77"
 
-libpulse-binding = { version = "2.0" }
-libpulse-simple-binding = { version = "2.0" }
+#libpulse-binding = { version = "2.0" }
+#libpulse-simple-binding = { version = "2.0" }
+
 byteorder = "1"
 itertools = "0.8.0"
 derivative = "1.0.3"
+cpal = "0.15.3"

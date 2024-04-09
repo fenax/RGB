@@ -7,6 +7,8 @@ use cpu::ram::Ram;
 use cpu::*;
 use EmuKeys;
 
+const IO_DEBUG: bool = false;
+
 pub fn bit(var: u8, bit: u8) -> bool {
     var & (1 << bit) != 0
 }
@@ -150,7 +152,7 @@ impl InterruptManager {
                 ram.push16(&mut reg.sp, reg.pc);
                 reg.pc = 0x40;
             } else if ram.interrupt.enable_lcd_stat && ram.interrupt.request_lcd_stat {
-                println!("running lcd_stat");
+                //println!("running lcd_stat");
                 ram.interrupt.master_enable = false;
                 ram.interrupt.request_lcd_stat = false;
                 ram.push16(&mut reg.sp, reg.pc);

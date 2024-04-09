@@ -2,7 +2,7 @@ use cpu::ram::io::*;
 use cpu::ram::Ram;
 use std::cmp::Ordering;
 use std::panic;
-const VIDEO_DEBUG: bool = true;
+const VIDEO_DEBUG: bool = false;
 #[derive(Copy, Clone, Eq)]
 pub struct Sprite {
     pub y: u8,
@@ -466,7 +466,7 @@ impl Video {
                         ram.video.window_line = 0;
                         ram.video.line_clock = 0;
                         outvblank = Interrupt::VBlankEnd;
-                        println!("{:?}", ram.video);
+                        //println!("{:?}", ram.video);
                     }
                     // shorter line
                 }
@@ -474,10 +474,12 @@ impl Video {
             }
             if ram.video.line_clock == 1 {
                 ram.video.signal_ly_lcy_comparison = ram.video.line == ram.video.line_compare;
-                println!(
-                    "lylyc is {}  {} {}",
-                    ram.video.signal_ly_lcy_comparison, ram.video.line, ram.video.line_compare
-                );
+                if VIDEO_DEBUG {
+                    println!(
+                        "lylyc is {}  {} {}",
+                        ram.video.signal_ly_lcy_comparison, ram.video.line, ram.video.line_compare
+                    );
+                }
                 if ram.video.signal_ly_lcy_comparison && ram.video.enable_ly_lcy_check {
                     outlcdc = Interrupt::LcdcStatus;
                 }
@@ -705,21 +707,25 @@ impl Video {
     }
     pub fn write_oam(&mut self, a: u16, v: u8) {
         let mode = self.get_video_mode();
-        if mode > 1 {
-            println!(
-                "##########################Tried to write to oam in mode{}",
-                mode
-            );
-        } else {
-            println!("$$$$$$$ Write ot oam")
+        if VIDEO_DEBUG {
+            if mode > 1 {
+                println!(
+                    "##########################Tried to write to oam in mode{}",
+                    mode
+                );
+            } else {
+                println!("$$$$$$$ Write ot oam")
+            }
         }
         self.oam[(a >> 2) as usize].write(a & 0x3, v);
     }
     pub fn write_vram(&mut self, a: u16, v: u8) {
-        if self.get_video_mode() == 3 {
-            println!("##########################Tried to write to vram in mode3");
-        } else {
-            println!("$$$$$$ Write to vram");
+        if VIDEO_DEBUG {
+            if self.get_video_mode() == 3 {
+                println!("##########################Tried to write to vram in mode3");
+            } else {
+                println!("$$$$$$ Write to vram");
+            }
         }
         match a {
             0..=0x17ff => {
@@ -755,8 +761,10 @@ impl Video {
         self.vram[a as usize] = v;
     }
     pub fn read_vram(&self, a: u16) -> u8 {
-        if self.get_video_mode() == 3 {
-            println!("##########################Tried to read from vram in mode3");
+        if VIDEO_DEBUG {
+            if self.get_video_mode() == 3 {
+                println!("##########################Tried to read from vram in mode3");
+            }
         }
         self.vram[a as usize]
     }
